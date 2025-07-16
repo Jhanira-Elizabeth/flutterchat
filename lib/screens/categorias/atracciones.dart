@@ -29,7 +29,7 @@ class _AtraccionesScreenState extends State<AtraccionesScreen> {
     'assets/images/Tapir5.jpg',
     'assets/images/Catedral1.jpg',
     'assets/images/Bomboli2.jpg',
-    'assets/images/jardin_botanico1.jpg',
+    'assets/images/jardin_botanico1.png',
     'assets/images/ParqueZaracay2.jpg',
     'assets/images/IndioColorado6.jpg',
   ];

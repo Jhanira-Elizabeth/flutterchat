@@ -22,6 +22,7 @@ class _MapaScreenState extends State<MapaScreen> {
   void initState() {
     super.initState();
     _puntosFuture = _apiService.fetchPuntosTuristicos();
+    print("MapaScreen: initState - Cargando puntos turísticos...");
   }
 
   void _onTabChange(int index) {
@@ -101,6 +102,12 @@ class _MapaScreenState extends State<MapaScreen> {
             );
           } else {
             final puntos = snapshot.data!;
+            print("MapaScreen: Datos cargados - ${puntos.length} puntos turísticos");
+
+            // Mostrar coordenadas de los puntos para debug
+            for (var punto in puntos) {
+              print("Punto: ${punto.nombre} - Lat: ${punto.latitud}, Lng: ${punto.longitud}");
+            }
 
             // Calculate center position based on all points
             double sumLat = 0;
@@ -113,6 +120,8 @@ class _MapaScreenState extends State<MapaScreen> {
 
             final centerLat = sumLat / puntos.length;
             final centerLng = sumLng / puntos.length;
+            
+            print("MapaScreen: Centro del mapa - Lat: $centerLat, Lng: $centerLng");
 
             final Set<Marker> markers = {};
 
@@ -138,6 +147,8 @@ class _MapaScreenState extends State<MapaScreen> {
                 ),
               );
             }
+            
+            print("MapaScreen: ${markers.length} marcadores creados");
 
             // Google Maps ofrece una opción para estilos personalizados del mapa.
             // Para el modo oscuro, puedes cargar un JSON de estilo oscuro.
@@ -149,18 +160,25 @@ class _MapaScreenState extends State<MapaScreen> {
             // String _mapStyle = themeProvider.themeMode == ThemeMode.dark ? darkMapStyleJson : '';
             // (Donde darkMapStyleJson es el contenido de un JSON de estilo de mapa oscuro)
 
+            // Restaurar el centro dinámico según los datos de la app
             return Stack(
               children: [
-                GoogleMap(
-                  initialCameraPosition: CameraPosition(
-                    target: LatLng(centerLat, centerLng),
-                    zoom: 12,
+                Container(
+                  height: MediaQuery.of(context).size.height,
+                  child: GoogleMap(
+                    onMapCreated: (GoogleMapController controller) {
+                      print("MapaScreen: Mapa creado exitosamente");
+                    },
+                    initialCameraPosition: CameraPosition(
+                      target: LatLng(centerLat, centerLng),
+                      zoom: 12,
+                    ),
+                    markers: markers,
+                    myLocationEnabled: false,
+                    myLocationButtonEnabled: false,
+                    zoomControlsEnabled: true,
+                    mapToolbarEnabled: true,
                   ),
-                  markers: markers,
-                  myLocationEnabled: true,
-                  myLocationButtonEnabled: true,
-                  // Puedes añadir un estilo de mapa personalizado aquí para el modo oscuro
-                  // mapStyle: _mapStyle, // Si implementas estilos JSON
                 ),
                 Positioned(
                   top: 16,
@@ -169,11 +187,11 @@ class _MapaScreenState extends State<MapaScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 12),
                     decoration: BoxDecoration(
-                      color: theme.colorScheme.surface, // Color de la superficie (tarjeta)
+                      color: theme.colorScheme.surface,
                       borderRadius: BorderRadius.circular(30),
                       boxShadow: [
                         BoxShadow(
-                          color: theme.colorScheme.onSurface.withOpacity(0.1), // Sombra con color adaptable
+                          color: theme.colorScheme.onSurface.withOpacity(0.1),
                           spreadRadius: 1,
                           blurRadius: 5,
                           offset: const Offset(0, 3),
@@ -183,12 +201,12 @@ class _MapaScreenState extends State<MapaScreen> {
                     child: TextField(
                       decoration: InputDecoration(
                         hintText: 'Buscar en el mapa',
-                        hintStyle: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.7)), // Color del texto de sugerencia
-                        prefixIcon: Icon(Icons.search, color: theme.colorScheme.onSurfaceVariant), // Color del icono
+                        hintStyle: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.7)),
+                        prefixIcon: Icon(Icons.search, color: theme.colorScheme.onSurfaceVariant),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(vertical: 0),
                       ),
-                      style: TextStyle(color: theme.colorScheme.onSurface), // Color del texto de entrada
+                      style: TextStyle(color: theme.colorScheme.onSurface),
                     ),
                   ),
                 ),

@@ -140,6 +140,7 @@ credentials.json
 # Archivos de macOS
 .DS_Store
 ._*
+tursd\android\app\key.properties
 
 # Archivos de Windows
 Thumbs.db

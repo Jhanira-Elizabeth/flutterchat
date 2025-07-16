@@ -56,6 +56,7 @@ class AuthService {
     if (!doc.exists) {
       await userRef.set({
         'favoritePuntosTuristicos': [], // Inicializar campo vacío para favoritos
+        'favoriteLocalesTuristicos': [], // Agregar campo para locales turísticos
         'email': user.email,
         'name': user.displayName,
         // Agrega otros campos si deseas, como fotoURL

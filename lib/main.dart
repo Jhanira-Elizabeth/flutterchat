@@ -34,9 +34,28 @@ import 'providers/theme_provider.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env"); // Carga las variables de entorno
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  
+  // Solución robusta para prevenir la doble inicialización de Firebase
+  try {
+    // Primera verificación: si Firebase no tiene apps registradas
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+      print('Firebase inicializado correctamente');
+    } else {
+      print('Firebase ya estaba inicializado (${Firebase.apps.length} apps registradas)');
+    }
+  } catch (e) {
+    // Segunda verificación: si hay error de duplicación, ignorarlo
+    if (e.toString().contains('duplicate-app') || e.toString().contains('[DEFAULT]')) {
+      print('Firebase ya estaba inicializado (capturado por catch)');
+    } else {
+      // Si es otro tipo de error, mostrarlo y continuar
+      print('Error al inicializar Firebase: $e');
+      // No rethrow para que la app continúe funcionando
+    }
+  }
   runApp(
     ChangeNotifierProvider( // Envuelve toda la app con ThemeProvider
       create: (context) => ThemeProvider(),
@@ -91,13 +110,11 @@ class _AppRootState extends State<AppRoot> {
       themeMode: themeProvider.themeMode, // Controla el tema actual
       initialRoute: '/',
       routes: {
-        '/': (context) => _showSplash
-            ? const SplashScreen()
-            : StreamBuilder<User?>(
-                stream: _auth.authStateChanges,
-                builder: (context, snapshot) {
-                  return snapshot.hasData ? const HomeScreen() : LoginScreen();
-                },
+        '/': (context) => StreamBuilder<User?>(
+          stream: _auth.authStateChanges,
+          builder: (context, snapshot) {
+            return snapshot.hasData ? const HomeScreen() : LoginScreen();
+          },
               ),
         '/home': (context) => const HomeScreen(),
         '/categorias': (context) => CategoriasScreen(),
