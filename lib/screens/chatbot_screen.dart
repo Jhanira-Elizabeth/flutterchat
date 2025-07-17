@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:tursd/widgets/bottom_navigation_bar_turistico.dart';
-import 'package:tursd/data/sample_data.dart';
-import 'package:tursd/data/buscador_inteligente.dart';
-import 'package:tursd/services/database_service.dart';
-import 'package:tursd/models/punto_turistico.dart';
-import 'dart:math';
+// import 'package:tursd/data/sample_data.dart'; // No usado en este snippet, puedes eliminar si no lo usas
+// import 'package:tursd/data/buscador_inteligente.dart'; // No usado
+// import 'package:tursd/services/database_service.dart'; // No usado
+// import 'package:tursd/models/punto_turistico.dart'; // No usado
+// import 'dart:math'; // No usado
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
@@ -16,20 +16,44 @@ class ChatbotScreen extends StatefulWidget {
 }
 
 class _ChatbotScreenState extends State<ChatbotScreen> {
+  // Solo una definición de las variables
   final List<_Message> _messages = [];
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  int _currentIndex = 2;
+  int _currentIndex = 2; // Índice inicial para el chatbot, como estaba
 
   @override
   void initState() {
     super.initState();
+    // Solo una definición de initState
     _messages.add(_Message(
       text: "Hola viajero! ¿Qué quieres saber hoy?",
       isUser: false,
     ));
   }
 
+  // Una sola definición del método _onTabChange para manejar la navegación
+  void _onTabChange(int index) {
+    setState(() {
+      _currentIndex = index;
+      switch (index) {
+        case 0:
+          Navigator.pushReplacementNamed(context, '/home');
+          break;
+        case 1:
+          Navigator.pushReplacementNamed(context, '/mapa');
+          break;
+        case 2:
+          Navigator.pushReplacementNamed(context, '/favoritos');
+          break;
+        case 3: // Si el chatbot es el índice 3
+          // Ya estamos en el chatbot, no navegamos
+          break;
+      }
+    });
+  }
+
+  // Solo una definición del método _sendMessage
   void _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
@@ -37,61 +61,68 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       _messages.add(_Message(text: text, isUser: true));
     });
 
+    // Desplazarse al final después de añadir el mensaje del usuario
+    _scrollToBottom();
+
     String reply = await _generateBotReply(text);
     setState(() {
       _messages.add(_Message(text: reply, isUser: false));
     });
 
     _controller.clear();
+    // Desplazarse al final después de añadir la respuesta del bot
+    _scrollToBottom();
+  }
+
+  // Helper para desplazar el scroll
+  void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
       _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent + 80,
+        _scrollController.position.maxScrollExtent + 80, // Pequeño extra para padding
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
     });
   }
 
+  // Solo una definición del método _generateBotReply
   Future<String> _generateBotReply(String userText) async {
-    // 1. Saludos y frases motivacionales cálidas y variadas
-    final greetings = [
-      '¡Hola! 😊',
-      '¡Qué gusto saludarte! 👋',
-      '¡Bienvenido! 🌟',
-    if (results['puntosDb'] != null && results['puntosDb']!.isNotEmpty) {
-      final punto = results['puntosSample']!.first;
-    final googleResults = await dbService.buscarLugaresGoogle(userText);
-        return address.contains('santo domingo') && address.contains('ecuador');
-    // Solo consulta a Azure
     try {
       final response = await http.post(
+        // ¡Esta es la URL que consultas y ya está correctamente aquí!
         Uri.parse('https://tursd-chatbot-fqdxgsa4arb8fjf9.brazilsouth-01.azurewebsites.net/chat'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'message': userText}),
       );
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        if (data is Map && data.containsKey('reply')) {
+        // La API devuelve un mapa con 'response' o 'reply'
+        if (data is Map && data.containsKey('response')) { // Asumo 'response' basándome en el ejemplo de Flask
+          if (data['response'].toString().trim().isNotEmpty) {
+            return data['response'].toString();
+          }
+        } else if (data is Map && data.containsKey('reply')) { // Si la API retorna 'reply'
           if (data['reply'].toString().trim().isNotEmpty) {
             return data['reply'].toString();
           }
-        } else if (data is String && data.trim().isNotEmpty) {
+        }
+        // Si la respuesta es una cadena directa (menos común pero posible)
+        else if (data is String && data.trim().isNotEmpty) {
           return data;
-        } else if (response.body.toString().trim().isNotEmpty) {
+        }
+        // Si el cuerpo de la respuesta es directamente la cadena (como fallback)
+        else if (response.body.toString().trim().isNotEmpty) {
           return response.body.toString();
         }
+      } else {
+        // Manejar otros códigos de estado HTTP (e.g., 405, 500)
+        return 'Error del servidor (${response.statusCode}): ${response.body}';
       }
-      return 'No se pudo obtener respuesta del chatbot de Azure.';
+      return 'No se pudo obtener una respuesta válida del chatbot de Azure.';
     } catch (e) {
       return 'Ocurrió un error al consultar el chatbot de Azure: $e';
     }
-        case 1:
-          Navigator.pushReplacementNamed(context, '/mapa');
-          break;
-        case 2:
-          break;
-      }
-    });
   }
 
   @override
@@ -101,7 +132,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
-            Navigator.pushReplacementNamed(context, '/home');
+            Navigator.pop(context);
           },
         ),
         title: const Text('ChatBot'),
@@ -208,9 +239,10 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
           ],
         ),
       ),
+      // Aquí se pasa la ÚNICA definición de _onTabChange
       bottomNavigationBar: BottomNavigationBarTuristico(
         currentIndex: _currentIndex,
-        onTabChange: _onTabChange,
+        onTabChange: _onTabChange, // Usa el método _onTabChange definido arriba
       ),
     );
   }
