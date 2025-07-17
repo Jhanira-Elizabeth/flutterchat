@@ -123,15 +123,22 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       return 'Punto turístico: ${punto.nombre}\n${punto.descripcion}';
     }
 
-    // Si no hay resultados locales, buscar los 3 lugares más relevantes en Google Places de Santo Domingo de los Tsáchilas, Ecuador
+    // Si no hay resultados locales, buscar los 3 lugares más relevantes en Google Places de Santo Domingo, Ecuador
     final googleResults = await dbService.buscarLugaresGoogle(userText);
     if (googleResults != null && googleResults.isNotEmpty) {
-      final buffer = StringBuffer();
-      buffer.writeln('Estos son los lugares más relevantes de Santo Domingo de los Tsáchilas, Ecuador:');
-      for (var lugar in googleResults.take(3)) {
-        buffer.writeln('• ${lugar['name']}\n  Dirección: ${lugar['formatted_address'] ?? lugar['vicinity'] ?? "No disponible"}\n  Valoración: ${lugar['rating'] ?? "No disponible"} ⭐');
+      // Filtrar solo lugares que tengan "Santo Domingo" y "Ecuador" en la dirección
+      final filtered = googleResults.where((lugar) {
+        final address = (lugar['formatted_address'] ?? lugar['vicinity'] ?? '').toString().toLowerCase();
+        return address.contains('santo domingo') && address.contains('ecuador');
+      }).toList();
+      if (filtered.isNotEmpty) {
+        final buffer = StringBuffer();
+        buffer.writeln('Estos son los lugares más relevantes de Santo Domingo, Ecuador:');
+        for (var lugar in filtered.take(3)) {
+          buffer.writeln('• ${lugar['name']}\n  Dirección: ${lugar['formatted_address'] ?? lugar['vicinity'] ?? "No disponible"}\n  Valoración: ${lugar['rating'] ?? "No disponible"} ⭐');
+        }
+        return buffer.toString();
       }
-      return buffer.toString();
     }
 
     // Si no encuentra nada local, mostrar el mensaje amigable de Google Places
@@ -169,12 +176,18 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       final dbService = DatabaseService();
       final googleResults = await dbService.buscarLugaresGoogle(userText);
       if (googleResults != null && googleResults.isNotEmpty) {
-        final buffer = StringBuffer();
-        buffer.writeln('Estos son los lugares más relevantes de Santo Domingo de los Tsáchilas, Ecuador:');
-        for (var lugar in googleResults.take(3)) {
-          buffer.writeln('• ${lugar['name']}\n  Dirección: ${lugar['formatted_address'] ?? lugar['vicinity'] ?? "No disponible"}\n  Valoración: ${lugar['rating'] ?? "No disponible"} ⭐');
+        final filtered = googleResults.where((lugar) {
+          final address = (lugar['formatted_address'] ?? lugar['vicinity'] ?? '').toString().toLowerCase();
+          return address.contains('santo domingo') && address.contains('ecuador');
+        }).toList();
+        if (filtered.isNotEmpty) {
+          final buffer = StringBuffer();
+          buffer.writeln('Estos son los lugares más relevantes de Santo Domingo, Ecuador:');
+          for (var lugar in filtered.take(3)) {
+            buffer.writeln('• ${lugar['name']}\n  Dirección: ${lugar['formatted_address'] ?? lugar['vicinity'] ?? "No disponible"}\n  Valoración: ${lugar['rating'] ?? "No disponible"} ⭐');
+          }
+          return buffer.toString();
         }
-        return buffer.toString();
       }
     } catch (e) {
       // Si ocurre un error, continuar
