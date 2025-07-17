@@ -409,6 +409,29 @@ class SampleData {
       ),
       actividades: [],
     ),
+    PuntoTuristico(
+      id: 9,
+      nombre: 'Comuna Tsáchila Congoma',
+      descripcion: 'Comunidad ancestral Tsáchila que conserva tradiciones culturales únicas, con actividades interactivas para los visitantes.',
+      idParroquia: 39,
+      latitud: -0.390846,
+      longitud: -79.351443,
+      imagenUrl: 'assets/images/congoma.jpg', // Cambia el nombre si tienes la imagen real
+      estado: 'activo',
+      esRecomendado: false,
+      etiquetas: [
+        Etiqueta(id: 1, nombre: 'Étnia Tsáchila', descripcion: 'Étnia Tsáchila', estado: 'activo'),
+      ],
+      parroquia: Parroquia(
+        id: 39,
+        nombre: 'Luz de América',
+        descripcion: 'Luz de América se caracteriza por su clima tropical',
+        poblacion: 11504,
+        temperaturaPromedio: 25.0,
+        estado: 'activo',
+      ),
+      actividades: [],
+    ),
   ];
 
   // Datos de Actividades reales

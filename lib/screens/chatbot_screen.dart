@@ -5,6 +5,8 @@ import 'package:tursd/data/buscador_inteligente.dart';
 import 'package:tursd/services/database_service.dart';
 import 'package:tursd/models/punto_turistico.dart';
 import 'dart:math';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class ChatbotScreen extends StatefulWidget {
   const ChatbotScreen({super.key});
@@ -140,6 +142,31 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
 
     // Mensaje genérico si no hay nada
     return 'No encontré información sobre tu búsqueda. ¿Quieres intentar con otra palabra clave?';
+    /*
+    // Consultar la API externa de Azure para obtener la respuesta del bot
+    try {
+      final response = await http.post(
+        Uri.parse('https://tursd-chatbot-fqdxgsa4arb8fjf9.brazilsouth-01.azurewebsites.net/chat'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'message': userText}),
+      );
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        // Suponiendo que la respuesta viene en un campo 'reply' o similar
+        if (data is Map && data.containsKey('reply')) {
+          return data['reply'].toString();
+        } else if (data is String) {
+          return data;
+        } else {
+          return response.body.toString();
+        }
+      } else {
+        return 'No se pudo obtener respuesta del chatbot (error ${response.statusCode}).';
+      }
+    } catch (e) {
+      return 'Ocurrió un error al consultar el chatbot: $e';
+    }
+    */
   }
 
   void _onTabChange(int index) {
