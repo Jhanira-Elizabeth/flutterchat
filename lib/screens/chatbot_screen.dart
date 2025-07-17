@@ -140,10 +140,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       return results['googlePlaces'].join("\n\n");
     }
 
-    // Mensaje genérico si no hay nada
-    return 'No encontré información sobre tu búsqueda. ¿Quieres intentar con otra palabra clave?';
-    /*
-    // Consultar la API externa de Azure para obtener la respuesta del bot
+    // Si no hay nada local, consultar la API externa de Azure
     try {
       final response = await http.post(
         Uri.parse('https://tursd-chatbot-fqdxgsa4arb8fjf9.brazilsouth-01.azurewebsites.net/chat'),
@@ -154,19 +151,36 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         final data = jsonDecode(response.body);
         // Suponiendo que la respuesta viene en un campo 'reply' o similar
         if (data is Map && data.containsKey('reply')) {
-          return data['reply'].toString();
-        } else if (data is String) {
+          if (data['reply'].toString().trim().isNotEmpty) {
+            return data['reply'].toString();
+          }
+        } else if (data is String && data.trim().isNotEmpty) {
           return data;
-        } else {
+        } else if (response.body.toString().trim().isNotEmpty) {
           return response.body.toString();
         }
-      } else {
-        return 'No se pudo obtener respuesta del chatbot (error ${response.statusCode}).';
+        // Si Azure responde vacío, buscar en Google Places
       }
     } catch (e) {
-      return 'Ocurrió un error al consultar el chatbot: $e';
+      // Si ocurre un error, intentar buscar en Google Places
     }
-    */
+    // Buscar en Google Places si Azure no responde o responde vacío
+    try {
+      final dbService = DatabaseService();
+      final googleResults = await dbService.buscarLugaresGoogle(userText);
+      if (googleResults != null && googleResults.isNotEmpty) {
+        final buffer = StringBuffer();
+        buffer.writeln('Estos son los lugares más relevantes de Santo Domingo de los Tsáchilas, Ecuador:');
+        for (var lugar in googleResults.take(3)) {
+          buffer.writeln('• ${lugar['name']}\n  Dirección: ${lugar['formatted_address'] ?? lugar['vicinity'] ?? "No disponible"}\n  Valoración: ${lugar['rating'] ?? "No disponible"} ⭐');
+        }
+        return buffer.toString();
+      }
+    } catch (e) {
+      // Si ocurre un error, continuar
+    }
+    // Mensaje genérico si no hay nada
+    return 'No encontré información sobre tu búsqueda. ¿Quieres intentar con otra palabra clave?';
   }
 
   void _onTabChange(int index) {
