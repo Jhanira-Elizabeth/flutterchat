@@ -278,59 +278,32 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                         ],
                       ),
                       // ¡Aquí es donde cambiamos!
-                      child: MarkdownWidget(
+                      child: MarkdownBody(
                         data: msg.text,
-                        config: MarkdownConfig(
-                          configs: [
-                            PConfig(
-                              textStyle: TextStyle(
-                                color:
-                                    msg.isUser ? Colors.white : Colors.black87,
-                                fontSize: 16,
-                              ),
-                            ),
-                            StrongConfig(
-                              textStyle: TextStyle(
-                                color:
-                                    msg.isUser ? Colors.white : Colors.black87,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            H1Config(
-                              // Este 'textStyle' es el que generó error antes.
-                              // Si el problema persiste, es la siguiente cosa a revisar muy de cerca.
-                              textStyle: TextStyle(
-                                color:
-                                    msg.isUser ? Colors.white : Colors.black87,
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            H2Config(
-                              // Este 'textStyle' es el que generó error antes.
-                              textStyle: TextStyle(
-                                color:
-                                    msg.isUser ? Colors.white : Colors.black87,
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            UlConfig(
-                              // Si 'itemMarker' no funciona, puedes eliminarlo temporalmente o usar 'textStyle'
-                              itemMarker: (index, config) => Text(
-                                  '${index + 1}. ',
-                                  style: config?.textStyle),
-                            ),
-                            OlConfig(
-                              textStyle: TextStyle(
-                                // Aplica el estilo al texto de la lista ordenada
-                                color:
-                                    msg.isUser ? Colors.white : Colors.black87,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ],
+                        styleSheet: MarkdownStyleSheet(
+                          p: TextStyle(
+                            color: msg.isUser ? Colors.white : Colors.black87,
+                            fontSize: 16,
+                          ),
+                          strong: TextStyle(
+                            color: msg.isUser ? Colors.white : Colors.black87,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          h1: TextStyle(
+                            color: msg.isUser ? Colors.white : Colors.black87,
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          h2: TextStyle(
+                            color: msg.isUser ? Colors.white : Colors.black87,
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          listBullet: TextStyle(
+                            color: msg.isUser ? Colors.white : Colors.black87,
+                            fontSize: 16,
+                          ),
                         ),
                       ),
                     ),
