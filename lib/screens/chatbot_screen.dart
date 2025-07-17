@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:tursd/widgets/bottom_navigation_bar_turistico.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
@@ -20,6 +21,8 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   @override
   void initState() {
     super.initState();
+    // Oculta las barras de sistema para pantalla completa (gestos para mostrar navegación)
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _messages.add(_Message(
       text: "Hola viajero! ¿Qué quieres saber hoy?",
       isUser: false,
@@ -225,7 +228,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
-            Navigator.pop(context);
+            Navigator.pushReplacementNamed(context, '/home');
           },
         ),
         title: const Text('ChatBot'),

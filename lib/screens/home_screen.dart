@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart'; // Importa provider
 import '../providers/theme_provider.dart'; // Importa tu ThemeProvider
@@ -84,6 +85,8 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    // Oculta las barras de sistema para pantalla completa (gestos para mostrar navegación)
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _cargarPuntosTuristicos();
     _cargarLocalesRecomendados();
   }

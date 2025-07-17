@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:provider/provider.dart'; // Importa Provider
@@ -21,6 +22,8 @@ class _MapaScreenState extends State<MapaScreen> {
   @override
   void initState() {
     super.initState();
+    // Oculta las barras de sistema para pantalla completa (gestos para mostrar navegación)
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _puntosFuture = _apiService.fetchPuntosTuristicos();
     print("MapaScreen: initState - Cargando puntos turísticos...");
   }

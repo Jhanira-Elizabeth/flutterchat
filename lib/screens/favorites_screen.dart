@@ -1,3 +1,4 @@
+import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import '../../widgets/bottom_navigation_bar_turistico.dart';
 import '../../services/favorite_service.dart';
@@ -36,6 +37,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   @override
   void initState() {
     super.initState();
+    // Oculta las barras de sistema para pantalla completa (gestos para mostrar navegación)
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _favoritesFuture = _fetchFavorites();
   }
 
