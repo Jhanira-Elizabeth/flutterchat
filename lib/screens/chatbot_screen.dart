@@ -58,96 +58,11 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       '¡Hola! 😊',
       '¡Qué gusto saludarte! 👋',
       '¡Bienvenido! 🌟',
-      '¡Hola, explorador! 🧭',
-      '¡Hola! ¿Listo para descubrir algo nuevo? 🗺️',
-      '¡Saludos, viajero curioso! ✈️',
-      '¡Encantado de ayudarte! 🤗',
-      '¡Hola! ¿En qué puedo inspirarte hoy? 💡',
-    ];
-    final motivational = [
-      'Recuerda que cada aventura comienza con una pregunta. 🚀',
-      '¡Explorar es vivir! 🌄',
-      '¡Tu próxima experiencia inolvidable está a un mensaje de distancia! ✨',
-      '¡Déjame ayudarte a encontrar el mejor destino! 🏞️',
-      '¡La curiosidad es el primer paso para una gran aventura! 🔍',
-      '¡Nunca dejes de descubrir! 🌍',
-      '¡El mundo está lleno de sorpresas para ti! 🎁',
-      '¡Hoy puede ser el día de tu próxima gran experiencia! 🥳',
-    ];
-    final random = Random();
-    final greeting = greetings[random.nextInt(greetings.length)];
-    final motiv = motivational[random.nextInt(motivational.length)];
-
-    // 2. Buscar usando BuscadorInteligente
-    final resultadosInteligente = BuscadorInteligente.buscar(userText);
-    if (resultadosInteligente.isNotEmpty) {
-      // Plantillas variadas y cálidas para mostrar resultados
-      final templates = [
-        (r) => '¡Genial! Encontré esto para ti: ${r.nombre} - ${r.descripcion} 😃',
-        (r) => '¿Buscabas algo como "${r.nombre}"? Aquí tienes: ${r.descripcion} 🏝️',
-        (r) => '¡Mira lo que encontré! ${r.nombre}: ${r.descripcion} ✨',
-        (r) => 'Te recomiendo: ${r.nombre}. ${r.descripcion} 👍',
-        (r) => '¡Perfecto para ti! ${r.nombre} - ${r.descripcion} 🌟',
-        (r) => '¡Esto podría interesarte! ${r.nombre}: ${r.descripcion} 😉',
-        (r) => '¡No te pierdas ${r.nombre}! ${r.descripcion} 🏆',
-        (r) => '¡Una excelente opción! ${r.nombre} - ${r.descripcion} 🥇',
-      ];
-      final buffer = StringBuffer();
-      buffer.writeln('$greeting $motiv');
-      for (var punto in resultadosInteligente.take(3)) {
-        final template = templates[random.nextInt(templates.length)];
-        buffer.writeln(template(punto));
-      }
-      return buffer.toString().trim();
-    }
-
-    // 2. Si no hay resultados inteligentes, buscar en la base de datos y fallback
-    final dbService = DatabaseService();
-    final results = await dbService.buscarGeneralConFallback(userText);
-
-    // Prioridad: parroquias, puntos turísticos, actividades, locales
-    if (results['parroquiasDb'] != null && results['parroquiasDb']!.isNotEmpty) {
-      final parroquia = results['parroquiasDb']!.first;
-      return 'Parroquia: ${parroquia['nombre']}\n${parroquia['descripcion'] ?? "Sin descripción"}';
-    }
-    if (results['parroquiasSample'] != null && results['parroquiasSample']!.isNotEmpty) {
-      final parroquia = results['parroquiasSample']!.first;
-      return 'Parroquia: ${parroquia.nombre}\n${parroquia.descripcion}';
-    }
     if (results['puntosDb'] != null && results['puntosDb']!.isNotEmpty) {
-      final punto = results['puntosDb']!.first;
-      return 'Punto turístico: ${punto['nombre']}\n${punto['descripcion'] ?? "Sin descripción"}';
-    }
-    if (results['puntosSample'] != null && results['puntosSample']!.isNotEmpty) {
       final punto = results['puntosSample']!.first;
-      return 'Punto turístico: ${punto.nombre}\n${punto.descripcion}';
-    }
-
-    // Si no hay resultados locales, buscar los 3 lugares más relevantes en Google Places de Santo Domingo, Ecuador
     final googleResults = await dbService.buscarLugaresGoogle(userText);
-    if (googleResults != null && googleResults.isNotEmpty) {
-      // Filtrar solo lugares que tengan "Santo Domingo" y "Ecuador" en la dirección
-      final filtered = googleResults.where((lugar) {
-        final address = (lugar['formatted_address'] ?? lugar['vicinity'] ?? '').toString().toLowerCase();
         return address.contains('santo domingo') && address.contains('ecuador');
-      }).toList();
-      if (filtered.isNotEmpty) {
-        final buffer = StringBuffer();
-        buffer.writeln('Estos son los lugares más relevantes de Santo Domingo, Ecuador:');
-        for (var lugar in filtered.take(3)) {
-          buffer.writeln('• ${lugar['name']}\n  Dirección: ${lugar['formatted_address'] ?? lugar['vicinity'] ?? "No disponible"}\n  Valoración: ${lugar['rating'] ?? "No disponible"} ⭐');
-        }
-        return buffer.toString();
-      }
-    }
-
-    // Si no encuentra nada local, mostrar el mensaje amigable de Google Places
-    if (results['googlePlaces'] != null && results['googlePlaces'].isNotEmpty) {
-      // results['googlePlaces'] es una lista de mensajes amigables (string)
-      return results['googlePlaces'].join("\n\n");
-    }
-
-    // Si no hay nada local, consultar la API externa de Azure
+    // Solo consulta a Azure
     try {
       final response = await http.post(
         Uri.parse('https://tursd-chatbot-fqdxgsa4arb8fjf9.brazilsouth-01.azurewebsites.net/chat'),
@@ -156,7 +71,6 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       );
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        // Suponiendo que la respuesta viene en un campo 'reply' o similar
         if (data is Map && data.containsKey('reply')) {
           if (data['reply'].toString().trim().isNotEmpty) {
             return data['reply'].toString();
@@ -166,43 +80,11 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         } else if (response.body.toString().trim().isNotEmpty) {
           return response.body.toString();
         }
-        // Si Azure responde vacío, buscar en Google Places
       }
+      return 'No se pudo obtener respuesta del chatbot de Azure.';
     } catch (e) {
-      // Si ocurre un error, intentar buscar en Google Places
+      return 'Ocurrió un error al consultar el chatbot de Azure: $e';
     }
-    // Buscar en Google Places si Azure no responde o responde vacío
-    try {
-      final dbService = DatabaseService();
-      final googleResults = await dbService.buscarLugaresGoogle(userText);
-      if (googleResults != null && googleResults.isNotEmpty) {
-        final filtered = googleResults.where((lugar) {
-          final address = (lugar['formatted_address'] ?? lugar['vicinity'] ?? '').toString().toLowerCase();
-          return address.contains('santo domingo') && address.contains('ecuador');
-        }).toList();
-        if (filtered.isNotEmpty) {
-          final buffer = StringBuffer();
-          buffer.writeln('Estos son los lugares más relevantes de Santo Domingo, Ecuador:');
-          for (var lugar in filtered.take(3)) {
-            buffer.writeln('• ${lugar['name']}\n  Dirección: ${lugar['formatted_address'] ?? lugar['vicinity'] ?? "No disponible"}\n  Valoración: ${lugar['rating'] ?? "No disponible"} ⭐');
-          }
-          return buffer.toString();
-        }
-      }
-    } catch (e) {
-      // Si ocurre un error, continuar
-    }
-    // Mensaje genérico si no hay nada
-    return 'No encontré información sobre tu búsqueda. ¿Quieres intentar con otra palabra clave?';
-  }
-
-  void _onTabChange(int index) {
-    setState(() {
-      _currentIndex = index;
-      switch (index) {
-        case 0:
-          Navigator.pushReplacementNamed(context, '/home');
-          break;
         case 1:
           Navigator.pushReplacementNamed(context, '/mapa');
           break;
