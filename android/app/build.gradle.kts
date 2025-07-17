@@ -10,7 +10,7 @@ plugins {
 
 android {
     namespace = "com.tesis.tursd1"
-    compileSdk = 34
+    compileSdk = 35
     ndkVersion = "27.0.12077973"
 
     compileOptions {

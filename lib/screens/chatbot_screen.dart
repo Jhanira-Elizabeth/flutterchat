@@ -1,12 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:tursd/widgets/bottom_navigation_bar_turistico.dart';
-// import 'package:tursd/data/sample_data.dart'; // No usado en este snippet, puedes eliminar si no lo usas
-// import 'package:tursd/data/buscador_inteligente.dart'; // No usado
-// import 'package:tursd/services/database_service.dart'; // No usado
-// import 'package:tursd/models/punto_turistico.dart'; // No usado
-// import 'dart:math'; // No usado
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 class ChatbotScreen extends StatefulWidget {
   const ChatbotScreen({super.key});
@@ -16,7 +12,6 @@ class ChatbotScreen extends StatefulWidget {
 }
 
 class _ChatbotScreenState extends State<ChatbotScreen> {
-  // Solo una definición de las variables
   final List<_Message> _messages = [];
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -25,14 +20,12 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   @override
   void initState() {
     super.initState();
-    // Solo una definición de initState
     _messages.add(_Message(
       text: "Hola viajero! ¿Qué quieres saber hoy?",
       isUser: false,
     ));
   }
 
-  // Una sola definición del método _onTabChange para manejar la navegación
   void _onTabChange(int index) {
     setState(() {
       _currentIndex = index;
@@ -46,14 +39,13 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         case 2:
           Navigator.pushReplacementNamed(context, '/favoritos');
           break;
-        case 3: // Si el chatbot es el índice 3
-          // Ya estamos en el chatbot, no navegamos
+        case 3:
+          // Ya estamos en el chatbot, no navegamos de nuevo a la misma pantalla
           break;
       }
     });
   }
 
-  // Solo una definición del método _sendMessage
   void _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
@@ -61,67 +53,168 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       _messages.add(_Message(text: text, isUser: true));
     });
 
-    // Desplazarse al final después de añadir el mensaje del usuario
     _scrollToBottom();
 
-    String reply = await _generateBotReply(text);
+    // Llama al método que genera la respuesta y maneja la estructura
+    String reply = await _getFormattedBotReply(text);
+
     setState(() {
       _messages.add(_Message(text: reply, isUser: false));
     });
 
     _controller.clear();
-    // Desplazarse al final después de añadir la respuesta del bot
     _scrollToBottom();
   }
 
-  // Helper para desplazar el scroll
   void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
       _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent + 80, // Pequeño extra para padding
+        _scrollController.position.maxScrollExtent + 80,
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeOut,
       );
     });
   }
 
-  // Solo una definición del método _generateBotReply
-  Future<String> _generateBotReply(String userText) async {
+  // Nuevo método para obtener y formatear la respuesta del bot
+  Future<String> _getFormattedBotReply(String userText) async {
     try {
       final response = await http.post(
-        // ¡Esta es la URL que consultas y ya está correctamente aquí!
-        Uri.parse('https://tursd-chatbot-fqdxgsa4arb8fjf9.brazilsouth-01.azurewebsites.net/chat'),
+        Uri.parse(
+            'https://tursd-chatbot-fqdxgsa4arb8fjf9.brazilsouth-01.azurewebsites.net/chat'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({'message': userText}),
       );
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        // La API devuelve un mapa con 'response' o 'reply'
-        if (data is Map && data.containsKey('response')) { // Asumo 'response' basándome en el ejemplo de Flask
-          if (data['response'].toString().trim().isNotEmpty) {
-            return data['response'].toString();
+        final decodedData = jsonDecode(response.body);
+
+        if (decodedData is Map && decodedData.containsKey('response')) {
+          final botResponse = decodedData[
+              'response']; // Este es el diccionario estructurado de Python
+
+          if (botResponse is Map && botResponse.containsKey('tipo_respuesta')) {
+            String tipoRespuesta = botResponse['tipo_respuesta'];
+
+            switch (tipoRespuesta) {
+              case 'hoteles_internet':
+                List<dynamic> hoteles = botResponse['data'] ?? [];
+                if (hoteles.isNotEmpty) {
+                  String hotelesStr = hoteles.map((hotel) {
+                    String nombre = hotel['nombre'] ?? 'Hotel Desconocido';
+                    String precio = hotel['precio'] ?? 'Precio no disponible';
+                    String rating = hotel['rating'] ?? 'Sin calificar';
+                    String descripcion = hotel['descripcion'] ?? '';
+                    String fuente = hotel['fuente'] ?? 'Desconocida';
+
+                    return '🏨 **$nombre**\n'
+                        '   💰 $precio\n'
+                        '   ⭐ $rating\n'
+                        '   📍 $descripcion\n'
+                        '   🔗 Fuente: $fuente';
+                  }).join('\n\n');
+
+                  return '¡Perfecto! Encontré estos hoteles actualizados para ti en Santo Domingo de los Tsáchilas:\n\n$hotelesStr\n\n'
+                      '📋 **Para reservar:**\n'
+                      '• Booking.com - Mejores precios y cancelación gratis\n'
+                      '• Expedia - Paquetes hotel + vuelo\n'
+                      '• Contacto directo con el hotel\n\n'
+                      '🏞️ **También te recomiendo visitar:**\n'
+                      '• Malecón del Río Toachi (zona céntrica)\n'
+                      '• Parque Zaracay (área turística)\n'
+                      '• Comunidades Tsáchilas (turismo cultural)\n\n'
+                      '¿Te gustaría que te cuente sobre algún lugar turístico específico mientras planificas tu estadía? 😊';
+                } else {
+                  return botResponse['texto'] ??
+                      'No se encontraron hoteles actualizados en internet.';
+                }
+
+              case 'lugar_turistico_bd':
+                String nombre =
+                    botResponse['nombre_lugar'] ?? 'Lugar turístico';
+                String descripcion = botResponse['descripcion'] ??
+                    ''; // La descripción ya viene del backend
+                List<dynamic> servicios = botResponse['servicios'] ?? [];
+                List<dynamic> actividades = botResponse['actividades'] ?? [];
+
+                String serviciosStr = servicios.isNotEmpty
+                    ? servicios.map((s) => '- $s').join('\n')
+                    : 'No se especifican servicios.';
+                String actividadesStr = actividades.isNotEmpty
+                    ? actividades.map((a) => '- $a').join('\n')
+                    : 'No se especifican actividades.';
+
+                // El texto_original_bd ya debería contener el formato Markdown (negritas)
+                String textoOriginal = botResponse['texto_original_bd'] ??
+                    'No hay información detallada disponible.';
+
+                // Asegúrate de que el nombre del lugar siempre esté en negritas al inicio del texto
+                // Si el texto original ya tiene el nombre en negritas (como debería venir del backend),
+                // no es necesario añadirlo de nuevo a menos que quieras una introducción específica.
+                // Para simplificar y usar el markdown del backend:
+                return textoOriginal;
+
+              case 'servicios_info':
+                String servicioBuscado =
+                    botResponse['servicio_buscado'] ?? 'servicio';
+                List<dynamic> lugares = botResponse['lugares'] ?? [];
+                if (lugares.isNotEmpty) {
+                  return '¡Claro! Encontré lugares con **$servicioBuscado** en Santo Domingo de los Tsáchilas, como:\n\n'
+                      '${lugares.map((l) => '🏞️ **$l**').join('\n')}\n\n' // Nombres de lugares en negritas aquí también
+                      '¿Te gustaría saber más sobre alguno de ellos o te ayudo a buscar más opciones?';
+                } else {
+                  return botResponse['texto'] ??
+                      'No encontré lugares específicos con $servicioBuscado en mi base de datos local.';
+                }
+
+              case 'lugares_multiples':
+                String terminoRelacionado =
+                    botResponse['termino_relacionado'] ?? 'este tipo de lugar';
+                List<dynamic> lugares = botResponse['lugares'] ?? [];
+                if (lugares.isNotEmpty) {
+                  return '¡Excelente! Aquí tienes varios lugares relacionados con **$terminoRelacionado** en Santo Domingo de los Tsáchilas:\n\n'
+                      '${lugares.map((l) => '🏞️ **$l**').join('\n')}\n\n' // Nombres de lugares en negritas aquí también
+                      '¿Cuál de ellos te interesa más?';
+                } else {
+                  return botResponse['texto'] ??
+                      'No encontré lugares relacionados.';
+                }
+
+              case 'info_general_internet':
+                String texto = botResponse['texto'] ??
+                    'No se encontró información relevante en internet.';
+                return '🌐 (Búsqueda en Internet)\n$texto';
+
+              case 'general':
+                // Para respuestas generales o de fallback
+                return botResponse['texto'] ??
+                    'Lo siento, no tengo una respuesta específica para eso en este momento. Intenta otra pregunta.';
+
+              case 'error':
+                // Para errores específicos del bot
+                return '¡Ups! Ocurrió un error: ${botResponse['texto'] ?? 'Desconocido'}. Por favor, inténtalo de nuevo.';
+
+              default:
+                // Si el tipo de respuesta no se reconoce
+                return 'Recibí una respuesta del chatbot que no puedo interpretar correctamente. Contenido: ${jsonEncode(botResponse)}';
+            }
           }
-        } else if (data is Map && data.containsKey('reply')) { // Si la API retorna 'reply'
-          if (data['reply'].toString().trim().isNotEmpty) {
-            return data['reply'].toString();
-          }
         }
-        // Si la respuesta es una cadena directa (menos común pero posible)
-        else if (data is String && data.trim().isNotEmpty) {
-          return data;
-        }
-        // Si el cuerpo de la respuesta es directamente la cadena (como fallback)
-        else if (response.body.toString().trim().isNotEmpty) {
-          return response.body.toString();
-        }
+        // Fallback si la respuesta no contiene 'response' o no es un mapa
+        return decodedData['response'].toString();
       } else {
-        // Manejar otros códigos de estado HTTP (e.g., 405, 500)
+        // Manejar otros códigos de estado HTTP
+        final errorData = jsonDecode(response.body);
+        if (errorData is Map &&
+            errorData.containsKey('response') &&
+            errorData['response'] is Map &&
+            errorData['response'].containsKey('texto')) {
+          return 'Error del chatbot (${response.statusCode}): ${errorData['response']['texto']}';
+        }
         return 'Error del servidor (${response.statusCode}): ${response.body}';
       }
-      return 'No se pudo obtener una respuesta válida del chatbot de Azure.';
     } catch (e) {
-      return 'Ocurrió un error al consultar el chatbot de Azure: $e';
+      return 'Ocurrió un error al consultar el chatbot: $e';
     }
   }
 
@@ -184,11 +277,60 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                           ),
                         ],
                       ),
-                      child: Text(
-                        msg.text,
-                        style: TextStyle(
-                          color: msg.isUser ? Colors.white : Colors.black87,
-                          fontSize: 16,
+                      // ¡Aquí es donde cambiamos!
+                      child: MarkdownWidget(
+                        data: msg.text,
+                        config: MarkdownConfig(
+                          configs: [
+                            PConfig(
+                              textStyle: TextStyle(
+                                color:
+                                    msg.isUser ? Colors.white : Colors.black87,
+                                fontSize: 16,
+                              ),
+                            ),
+                            StrongConfig(
+                              textStyle: TextStyle(
+                                color:
+                                    msg.isUser ? Colors.white : Colors.black87,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            H1Config(
+                              // Este 'textStyle' es el que generó error antes.
+                              // Si el problema persiste, es la siguiente cosa a revisar muy de cerca.
+                              textStyle: TextStyle(
+                                color:
+                                    msg.isUser ? Colors.white : Colors.black87,
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            H2Config(
+                              // Este 'textStyle' es el que generó error antes.
+                              textStyle: TextStyle(
+                                color:
+                                    msg.isUser ? Colors.white : Colors.black87,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            UlConfig(
+                              // Si 'itemMarker' no funciona, puedes eliminarlo temporalmente o usar 'textStyle'
+                              itemMarker: (index, config) => Text(
+                                  '${index + 1}. ',
+                                  style: config?.textStyle),
+                            ),
+                            OlConfig(
+                              textStyle: TextStyle(
+                                // Aplica el estilo al texto de la lista ordenada
+                                color:
+                                    msg.isUser ? Colors.white : Colors.black87,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
@@ -239,10 +381,9 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
           ],
         ),
       ),
-      // Aquí se pasa la ÚNICA definición de _onTabChange
       bottomNavigationBar: BottomNavigationBarTuristico(
         currentIndex: _currentIndex,
-        onTabChange: _onTabChange, // Usa el método _onTabChange definido arriba
+        onTabChange: _onTabChange,
       ),
     );
   }
