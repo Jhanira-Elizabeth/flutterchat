@@ -4,6 +4,8 @@ import 'package:tursd/widgets/bottom_navigation_bar_turistico.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 class ChatbotScreen extends StatefulWidget {
   const ChatbotScreen({super.key});
@@ -23,10 +25,37 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     super.initState();
     // Oculta las barras de sistema para pantalla completa (gestos para mostrar navegación)
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-    _messages.add(_Message(
-      text: "Hola viajero! ¿Qué quieres saber hoy?",
-      isUser: false,
-    ));
+
+    // Cargar historial de Firestore
+    _loadChatHistory();
+  }
+
+  Future<void> _loadChatHistory() async {
+    final user = FirebaseAuth.instance.currentUser;
+    final uid = user?.uid ?? 'anonimo';
+    final chatRef = FirebaseFirestore.instance.collection('chats').doc(uid).collection('mensajes');
+    final querySnapshot = await chatRef.orderBy('timestamp').get();
+
+    if (querySnapshot.docs.isEmpty) {
+      setState(() {
+        _messages.add(_Message(
+          text: "Hola viajero! ¿Qué quieres saber hoy?",
+          isUser: false,
+        ));
+      });
+    } else {
+      setState(() {
+        _messages.clear();
+        for (var doc in querySnapshot.docs) {
+          final data = doc.data();
+          _messages.add(_Message(
+            text: data['text'] ?? '',
+            isUser: data['isUser'] ?? false,
+          ));
+        }
+      });
+    }
+    _scrollToBottom();
   }
 
   void _onTabChange(int index) {
@@ -52,6 +81,18 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   void _sendMessage(String text) async {
     if (text.trim().isEmpty) return;
 
+    // Obtén el UID del usuario actual
+    final user = FirebaseAuth.instance.currentUser;
+    final uid = user?.uid ?? 'anonimo';
+    final chatRef = FirebaseFirestore.instance.collection('chats').doc(uid).collection('mensajes');
+
+    // Guarda el mensaje del usuario en Firestore
+    await chatRef.add({
+      'text': text,
+      'isUser': true,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+
     setState(() {
       _messages.add(_Message(text: text, isUser: true));
     });
@@ -60,6 +101,13 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
 
     // Llama al método que genera la respuesta y maneja la estructura
     String reply = await _getFormattedBotReply(text);
+
+    // Guarda la respuesta del bot en Firestore
+    await chatRef.add({
+      'text': reply,
+      'isUser': false,
+      'timestamp': FieldValue.serverTimestamp(),
+    });
 
     setState(() {
       _messages.add(_Message(text: reply, isUser: false));
@@ -253,6 +301,47 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         ),
         child: Column(
           children: [
+            // Encabezado tipo ChatGPT con tres líneas horizontales en la parte superior derecha
+            Container(
+              padding: const EdgeInsets.only(top: 12, right: 20, left: 20, bottom: 4),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 3,
+                        margin: const EdgeInsets.symmetric(vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade400,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      Container(
+                        width: 24,
+                        height: 3,
+                        margin: const EdgeInsets.symmetric(vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade400,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                      Container(
+                        width: 16,
+                        height: 3,
+                        margin: const EdgeInsets.symmetric(vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.grey.shade400,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
             Expanded(
               child: ListView.builder(
                 controller: _scrollController,
@@ -280,7 +369,6 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                           ),
                         ],
                       ),
-                      // ¡Aquí es donde cambiamos!
                       child: MarkdownBody(
                         data: msg.text,
                         styleSheet: MarkdownStyleSheet(
