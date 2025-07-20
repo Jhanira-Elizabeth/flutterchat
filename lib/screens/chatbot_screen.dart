@@ -19,6 +19,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   int _currentIndex = 2; // Índice inicial para el chatbot, como estaba
+  String? _currentConversationId;
 
   @override
   void initState() {
@@ -26,37 +27,92 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     // Oculta las barras de sistema para pantalla completa (gestos para mostrar navegación)
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-    // Cargar historial de Firestore
-    _loadChatHistory();
+    // Iniciar o cargar la última conversación
+    _initOrLoadLastConversation();
   }
 
-  Future<void> _loadChatHistory() async {
+  Future<void> _initOrLoadLastConversation() async {
     final user = FirebaseAuth.instance.currentUser;
     final uid = user?.uid ?? 'anonimo';
-    final chatRef = FirebaseFirestore.instance.collection('chats').doc(uid).collection('mensajes');
-    final querySnapshot = await chatRef.orderBy('timestamp').get();
-
+    final convRef = FirebaseFirestore.instance.collection('chats').doc(uid).collection('conversaciones');
+    final querySnapshot = await convRef.orderBy('timestamp', descending: true).limit(1).get();
     if (querySnapshot.docs.isEmpty) {
+      // No hay conversaciones previas, crea una nueva
+      await _startNewConversation();
+    } else {
+      final lastConv = querySnapshot.docs.first;
       setState(() {
+        _currentConversationId = lastConv.id;
+      });
+      await _loadChatHistory(conversationId: _currentConversationId);
+    }
+  }
+
+  Future<void> _startNewConversation() async {
+    // Crea una nueva conversación y actualiza el estado
+    final user = FirebaseAuth.instance.currentUser;
+    final uid = user?.uid ?? 'anonimo';
+    final convRef = FirebaseFirestore.instance.collection('chats').doc(uid).collection('conversaciones');
+    final newConv = await convRef.add({
+      'timestamp': FieldValue.serverTimestamp(),
+    });
+    setState(() {
+      _currentConversationId = newConv.id;
+      _messages.clear();
+      _messages.add(_Message(
+        text: "Hola viajero! ¿Qué quieres saber hoy?",
+        isUser: false,
+      ));
+    });
+    _scrollToBottom();
+  }
+
+  Future<void> _loadChatHistory({List<DocumentSnapshot>? docs, String? conversationId}) async {
+    final convId = conversationId ?? _currentConversationId;
+    if (convId == null) return;
+    final user = FirebaseAuth.instance.currentUser;
+    final uid = user?.uid ?? 'anonimo';
+    final msgRef = FirebaseFirestore.instance.collection('chats').doc(uid).collection('conversaciones').doc(convId).collection('mensajes');
+    final querySnapshot = docs == null ? await msgRef.orderBy('timestamp').get() : null;
+    final messagesDocs = docs ?? querySnapshot!.docs;
+
+    setState(() {
+      _messages.clear();
+      if (messagesDocs.isEmpty) {
         _messages.add(_Message(
           text: "Hola viajero! ¿Qué quieres saber hoy?",
           isUser: false,
         ));
-      });
-    } else {
-      setState(() {
-        _messages.clear();
-        for (var doc in querySnapshot.docs) {
-          final data = doc.data();
+      } else {
+        for (var doc in messagesDocs) {
+          final data = doc.data() as Map<String, dynamic>;
           _messages.add(_Message(
             text: data['text'] ?? '',
             isUser: data['isUser'] ?? false,
           ));
         }
-      });
-    }
+      }
+    });
     _scrollToBottom();
   }
+
+  Future<List<List<DocumentSnapshot>>> _getConversationsHistory() async {
+    final user = FirebaseAuth.instance.currentUser;
+    final uid = user?.uid ?? 'anonimo';
+    final convRef = FirebaseFirestore.instance.collection('chats').doc(uid).collection('conversaciones');
+    final convSnapshot = await convRef.orderBy('timestamp', descending: true).get();
+    List<List<DocumentSnapshot>> conversations = [];
+    for (var convDoc in convSnapshot.docs) {
+      final msgRef = convDoc.reference.collection('mensajes');
+      final msgSnapshot = await msgRef.orderBy('timestamp').get();
+      conversations.add(msgSnapshot.docs);
+    }
+    return conversations;
+  }
+
+  bool _historyModalOpen = false;
+
+
 
   void _onTabChange(int index) {
     setState(() {
@@ -79,15 +135,15 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   }
 
   void _sendMessage(String text) async {
-    if (text.trim().isEmpty) return;
+    if (text.trim().isEmpty || _currentConversationId == null) return;
 
     // Obtén el UID del usuario actual
     final user = FirebaseAuth.instance.currentUser;
     final uid = user?.uid ?? 'anonimo';
-    final chatRef = FirebaseFirestore.instance.collection('chats').doc(uid).collection('mensajes');
+    final msgRef = FirebaseFirestore.instance.collection('chats').doc(uid).collection('conversaciones').doc(_currentConversationId).collection('mensajes');
 
     // Guarda el mensaje del usuario en Firestore
-    await chatRef.add({
+    await msgRef.add({
       'text': text,
       'isUser': true,
       'timestamp': FieldValue.serverTimestamp(),
@@ -103,7 +159,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     String reply = await _getFormattedBotReply(text);
 
     // Guarda la respuesta del bot en Firestore
-    await chatRef.add({
+    await msgRef.add({
       'text': reply,
       'isUser': false,
       'timestamp': FieldValue.serverTimestamp(),
@@ -287,6 +343,118 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
           fontWeight: FontWeight.w600,
           fontSize: 20,
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            tooltip: 'Limpiar chat',
+            onPressed: () async {
+              await _startNewConversation();
+            },
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8.0, top: 15.0),
+            child: GestureDetector(
+              onTap: () async {
+                if (_historyModalOpen) return;
+                _historyModalOpen = true;
+                final conversations = await _getConversationsHistory();
+                await showModalBottomSheet(
+                  context: context,
+                  shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                  ),
+                  builder: (context) {
+                    return Container(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Historial de conversaciones', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          const SizedBox(height: 12),
+                          if (conversations.isEmpty)
+                            const Text('No hay conversaciones previas.')
+                          else
+                            SizedBox(
+                              height: 300,
+                              child: ListView.builder(
+                                itemCount: conversations.length,
+                                itemBuilder: (context, idx) {
+                                  final conv = conversations[idx].cast<QueryDocumentSnapshot>();
+                                  final validMsgs = conv.where((doc) {
+                                    final data = doc.data() as Map<String, dynamic>;
+                                    return (data['text'] != null && (data['text'] as String).trim().isNotEmpty);
+                                  }).toList();
+                                  if (validMsgs.isEmpty) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  QueryDocumentSnapshot? firstUserMsg;
+                                  try {
+                                    firstUserMsg = validMsgs.firstWhere((doc) {
+                                      final data = doc.data() as Map<String, dynamic>;
+                                      return data['isUser'] == true;
+                                    }, orElse: () => validMsgs[0]);
+                                  } catch (e) {
+                                    firstUserMsg = validMsgs[0];
+                                  }
+                                  final data = firstUserMsg.data() as Map<String, dynamic>;
+                                  final date = (data['timestamp'] as Timestamp?)?.toDate();
+                                  final preview = data['text'] ?? '';
+                                  return ListTile(
+                                    title: Text(preview.isNotEmpty ? preview : 'Sin mensajes de usuario', maxLines: 1, overflow: TextOverflow.ellipsis),
+                                    subtitle: date != null ? Text('${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute}') : null,
+                                    onTap: validMsgs.isNotEmpty
+                                        ? () {
+                                            Navigator.pop(context);
+                                            _loadChatHistory(docs: validMsgs);
+                                        }
+                                        : null,
+                                  );
+                                },
+                              ),
+                            ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+                _historyModalOpen = false;
+              },
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Container(
+                    width: 32,
+                    height: 3,
+                    margin: const EdgeInsets.symmetric(vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Container(
+                    width: 24,
+                    height: 3,
+                    margin: const EdgeInsets.symmetric(vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Container(
+                    width: 16,
+                    height: 3,
+                    margin: const EdgeInsets.symmetric(vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
       body: Container(
         decoration: const BoxDecoration(
@@ -295,53 +463,12 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
             end: Alignment.bottomCenter,
             colors: [
               Color(0xFFE0F7FA),
-              Colors.white,
+              Color.fromARGB(255, 255, 255, 255),
             ],
           ),
         ),
         child: Column(
           children: [
-            // Encabezado tipo ChatGPT con tres líneas horizontales en la parte superior derecha
-            Container(
-              padding: const EdgeInsets.only(top: 12, right: 20, left: 20, bottom: 4),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Container(
-                        width: 32,
-                        height: 3,
-                        margin: const EdgeInsets.symmetric(vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade400,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                      Container(
-                        width: 24,
-                        height: 3,
-                        margin: const EdgeInsets.symmetric(vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade400,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                      Container(
-                        width: 16,
-                        height: 3,
-                        margin: const EdgeInsets.symmetric(vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade400,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
             Expanded(
               child: ListView.builder(
                 controller: _scrollController,
@@ -358,7 +485,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: msg.isUser
-                            ? const Color(0xFF007BFF)
+                            ? const Color.fromARGB(255, 148, 219, 252) // Celeste claro para usuario
                             : const Color(0xFFF8F9FA),
                         borderRadius: BorderRadius.circular(24),
                         boxShadow: [
@@ -373,26 +500,26 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                         data: msg.text,
                         styleSheet: MarkdownStyleSheet(
                           p: TextStyle(
-                            color: msg.isUser ? Colors.white : Colors.black87,
+                            color: Colors.black87,
                             fontSize: 16,
                           ),
                           strong: TextStyle(
-                            color: msg.isUser ? Colors.white : Colors.black87,
+                            color: Colors.black87,
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
                           ),
                           h1: TextStyle(
-                            color: msg.isUser ? Colors.white : Colors.black87,
+                            color: Colors.black87,
                             fontSize: 22,
                             fontWeight: FontWeight.bold,
                           ),
                           h2: TextStyle(
-                            color: msg.isUser ? Colors.white : Colors.black87,
+                            color: Colors.black87,
                             fontSize: 20,
                             fontWeight: FontWeight.bold,
                           ),
                           listBullet: TextStyle(
-                            color: msg.isUser ? Colors.white : Colors.black87,
+                            color: Colors.black87,
                             fontSize: 16,
                           ),
                         ),
@@ -432,6 +559,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                         contentPadding:
                             const EdgeInsets.symmetric(vertical: 14),
                       ),
+                      style: const TextStyle(color: Colors.black),
                     ),
                   ),
                   const SizedBox(width: 8),

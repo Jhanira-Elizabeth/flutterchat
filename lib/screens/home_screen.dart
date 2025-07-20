@@ -555,7 +555,7 @@ class _HomeScreenState extends State<HomeScreen> {
         TextButton(
           onPressed: onPressed,
           child: Text(
-            title == 'Categorías' ? 'Ver todos' : 'Ver Todos',
+            title == 'Categorías' ? 'Ver todos (7)' : 'Ver Todos (5)',
             style: TextStyle(color: Theme.of(context).colorScheme.onBackground.withOpacity(0.6), fontSize: 14), // Color del texto del botón
           ),
         ),
