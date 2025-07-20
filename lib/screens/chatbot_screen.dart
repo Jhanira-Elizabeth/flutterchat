@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:geolocator/geolocator.dart';
 
 class ChatbotScreen extends StatefulWidget {
   const ChatbotScreen({super.key});
@@ -142,11 +143,32 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     final uid = user?.uid ?? 'anonimo';
     final msgRef = FirebaseFirestore.instance.collection('chats').doc(uid).collection('conversaciones').doc(_currentConversationId).collection('mensajes');
 
+    // Obtén la ubicación actual
+    double? latitude;
+    double? longitude;
+    try {
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+      }
+      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
+        Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+        latitude = position.latitude;
+        longitude = position.longitude;
+      }
+    } catch (e) {
+      // Si ocurre un error, no se envía ubicación
+      latitude = null;
+      longitude = null;
+    }
+
     // Guarda el mensaje del usuario en Firestore
     await msgRef.add({
       'text': text,
       'isUser': true,
       'timestamp': FieldValue.serverTimestamp(),
+      'latitude': latitude,
+      'longitude': longitude,
     });
 
     setState(() {
@@ -156,7 +178,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     _scrollToBottom();
 
     // Llama al método que genera la respuesta y maneja la estructura
-    String reply = await _getFormattedBotReply(text);
+    String reply = await _getFormattedBotReply(text, latitude: latitude, longitude: longitude);
 
     // Guarda la respuesta del bot en Firestore
     await msgRef.add({
@@ -183,22 +205,27 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     });
   }
 
-  // Nuevo método para obtener y formatear la respuesta del bot
-  Future<String> _getFormattedBotReply(String userText) async {
+  // Nuevo método para obtener y formatear la respuesta del bot, ahora acepta ubicación
+  Future<String> _getFormattedBotReply(String userText, {double? latitude, double? longitude}) async {
     try {
+      final body = {
+        'message': userText,
+        if (latitude != null && longitude != null) ...{
+          'latitude': latitude,
+          'longitude': longitude,
+        },
+      };
       final response = await http.post(
-        Uri.parse(
-            'https://tursd-chatbot-fqdxgsa4arb8fjf9.brazilsouth-01.azurewebsites.net/chat'),
+        Uri.parse('https://tursd-chatbot-fqdxgsa4arb8fjf9.brazilsouth-01.azurewebsites.net/chat'),
         headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'message': userText}),
+        body: jsonEncode(body),
       );
 
       if (response.statusCode == 200) {
         final decodedData = jsonDecode(response.body);
 
         if (decodedData is Map && decodedData.containsKey('response')) {
-          final botResponse = decodedData[
-              'response']; // Este es el diccionario estructurado de Python
+          final botResponse = decodedData['response'];
 
           if (botResponse is Map && botResponse.containsKey('tipo_respuesta')) {
             String tipoRespuesta = botResponse['tipo_respuesta'];
@@ -237,10 +264,8 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                 }
 
               case 'lugar_turistico_bd':
-                String nombre =
-                    botResponse['nombre_lugar'] ?? 'Lugar turístico';
-                String descripcion = botResponse['descripcion'] ??
-                    ''; // La descripción ya viene del backend
+                String nombre = botResponse['nombre_lugar'] ?? 'Lugar turístico';
+                String descripcion = botResponse['descripcion'] ?? '';
                 List<dynamic> servicios = botResponse['servicios'] ?? [];
                 List<dynamic> actividades = botResponse['actividades'] ?? [];
 
@@ -251,23 +276,16 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                     ? actividades.map((a) => '- $a').join('\n')
                     : 'No se especifican actividades.';
 
-                // El texto_original_bd ya debería contener el formato Markdown (negritas)
                 String textoOriginal = botResponse['texto_original_bd'] ??
                     'No hay información detallada disponible.';
-
-                // Asegúrate de que el nombre del lugar siempre esté en negritas al inicio del texto
-                // Si el texto original ya tiene el nombre en negritas (como debería venir del backend),
-                // no es necesario añadirlo de nuevo a menos que quieras una introducción específica.
-                // Para simplificar y usar el markdown del backend:
                 return textoOriginal;
 
               case 'servicios_info':
-                String servicioBuscado =
-                    botResponse['servicio_buscado'] ?? 'servicio';
+                String servicioBuscado = botResponse['servicio_buscado'] ?? 'servicio';
                 List<dynamic> lugares = botResponse['lugares'] ?? [];
                 if (lugares.isNotEmpty) {
                   return '¡Claro! Encontré lugares con **$servicioBuscado** en Santo Domingo de los Tsáchilas, como:\n\n'
-                      '${lugares.map((l) => '🏞️ **$l**').join('\n')}\n\n' // Nombres de lugares en negritas aquí también
+                      '${lugares.map((l) => '🏞️ **$l**').join('\n')}\n\n'
                       '¿Te gustaría saber más sobre alguno de ellos o te ayudo a buscar más opciones?';
                 } else {
                   return botResponse['texto'] ??
@@ -275,12 +293,11 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                 }
 
               case 'lugares_multiples':
-                String terminoRelacionado =
-                    botResponse['termino_relacionado'] ?? 'este tipo de lugar';
+                String terminoRelacionado = botResponse['termino_relacionado'] ?? 'este tipo de lugar';
                 List<dynamic> lugares = botResponse['lugares'] ?? [];
                 if (lugares.isNotEmpty) {
                   return '¡Excelente! Aquí tienes varios lugares relacionados con **$terminoRelacionado** en Santo Domingo de los Tsáchilas:\n\n'
-                      '${lugares.map((l) => '🏞️ **$l**').join('\n')}\n\n' // Nombres de lugares en negritas aquí también
+                      '${lugares.map((l) => '🏞️ **$l**').join('\n')}\n\n'
                       '¿Cuál de ellos te interesa más?';
                 } else {
                   return botResponse['texto'] ??
@@ -293,24 +310,19 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                 return '🌐 (Búsqueda en Internet)\n$texto';
 
               case 'general':
-                // Para respuestas generales o de fallback
                 return botResponse['texto'] ??
                     'Lo siento, no tengo una respuesta específica para eso en este momento. Intenta otra pregunta.';
 
               case 'error':
-                // Para errores específicos del bot
                 return '¡Ups! Ocurrió un error: ${botResponse['texto'] ?? 'Desconocido'}. Por favor, inténtalo de nuevo.';
 
               default:
-                // Si el tipo de respuesta no se reconoce
                 return 'Recibí una respuesta del chatbot que no puedo interpretar correctamente. Contenido: ${jsonEncode(botResponse)}';
             }
           }
         }
-        // Fallback si la respuesta no contiene 'response' o no es un mapa
         return decodedData['response'].toString();
       } else {
-        // Manejar otros códigos de estado HTTP
         final errorData = jsonDecode(response.body);
         if (errorData is Map &&
             errorData.containsKey('response') &&

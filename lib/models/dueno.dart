@@ -1,4 +1,13 @@
 class Dueno {
+  String get nombreCompleto => nombre + (apellido.isNotEmpty ? ' ' + apellido : '');
+
+  Map<String, String?> datosEsenciales() {
+    return {
+      'nombreCompleto': nombreCompleto,
+      'telefono': telefono,
+      'email': email,
+    };
+  }
   final int id;
   final String nombre;
   final String apellido;
