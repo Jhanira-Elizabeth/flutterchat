@@ -28,7 +28,7 @@ class _CategoriasScreenState extends State<CategoriasScreen> {
     {
       'nombre': 'Parroquias',
       'imagen': 'assets/images/ValleHermoso1.jpg',
-      'route': 'parroquias', 
+      'route': '/parroquias', 
     },
     {
       'nombre': 'Alojamiento',

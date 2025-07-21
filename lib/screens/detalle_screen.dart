@@ -80,6 +80,10 @@ class _DetallesScreenState extends State<DetallesScreen>
         emailDueno = d['email'] ?? '';
       } else if (_item is Map && _item['creadoPor'] != null) {
         dueno = _item['creadoPor'];
+      } else if (_item is Map && _item.containsKey('creadoPor')) {
+        dueno = _item['creadoPor'];
+      } else if (_item.runtimeType.toString() == 'LocalTuristico') {
+        dueno = 'Desconocido';
       } else if (_item.creadoPor != null) {
         dueno = _item.creadoPor;
       } else {
@@ -100,6 +104,27 @@ class _DetallesScreenState extends State<DetallesScreen>
                 child: _imageUrl.startsWith('http')
                     ? Image.network(_imageUrl, fit: BoxFit.cover)
                     : Image.asset(_imageUrl, fit: BoxFit.cover),
+              ),
+              // Flecha personalizada en la esquina superior izquierda
+              Positioned(
+                top: 16,
+                left: 16,
+                child: GestureDetector(
+                  onTap: () => Navigator.of(context).pop(),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.black, width: 2),
+                      color: Colors.white.withOpacity(0.8),
+                    ),
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(
+                      Icons.arrow_back,
+                      color: Colors.black,
+                      size: 28,
+                    ),
+                  ),
+                ),
               ),
               Positioned(
                 top: 16,
@@ -122,10 +147,20 @@ class _DetallesScreenState extends State<DetallesScreen>
                     int estrellas = promedio.round();
                     return Row(
                       children: List.generate(5, (i) {
-                        return Icon(
-                          i < estrellas ? Icons.star : Icons.star_border,
-                          color: Colors.amber,
-                          size: 28,
+                        return Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Icon(
+                              Icons.star_border,
+                              color: Colors.black,
+                              size: 32,
+                            ),
+                            Icon(
+                              i < estrellas ? Icons.star : Icons.star_border,
+                              color: Colors.amber,
+                              size: 28,
+                            ),
+                          ],
                         );
                       }),
                     );
