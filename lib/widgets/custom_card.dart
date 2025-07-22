@@ -1,24 +1,23 @@
 import 'package:flutter/material.dart';
-import 'package:tursd/services/favorite_service.dart';
-import 'package:tursd/models/punto_turistico.dart';
 import 'package:provider/provider.dart';
+import 'package:tursd/services/favorite_service.dart'; // Make sure this path is correct
+import 'package:tursd/models/punto_turistico.dart';
 import '../providers/theme_provider.dart';
 
 class CustomCard extends StatefulWidget {
   final String imageUrl;
   final String title;
-  final String? subtitle;
+  final String? subtitle; // Already nullable, which is good!
   final Function()? onTap;
-  final dynamic
-      item; // <--- CAMBIO IMPORTANTE: Ahora es dynamic y se llama 'item'
+  final dynamic item; // Already dynamic, which is good for flexibility
 
   const CustomCard({
     super.key,
     required this.imageUrl,
     required this.title,
-    this.subtitle,
+    this.subtitle, // Nullable, so no 'required'
     this.onTap,
-    required this.item, // <--- CAMBIO IMPORTANTE: Ahora es requerido y se llama 'item'
+    required this.item, // This item is always required
   });
 
   @override
@@ -41,35 +40,37 @@ class _CustomCardState extends State<CustomCard>
       vsync: this,
     );
 
-    // Ajusta la elevación y la posición de la animación para ser sutil
     _elevationAnimation = Tween<double>(
-      begin: 4, // Elevación inicial más consistente
-      end: 8, // Aumenta un poco la elevación al pasar el mouse
+      begin: 4,
+      end: 8,
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
 
     _positionAnimation = Tween<Offset>(
       begin: Offset.zero,
       end: const Offset(
-          0, -0.01), // Mueve ligeramente hacia arriba (1% de la altura)
+          0, -0.01),
     ).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut));
 
     _checkIsFavorite();
   }
 
   Future<void> _checkIsFavorite() async {
+    // We need to safely access 'id' and other properties from the dynamic item
+    // It's crucial that PuntoTuristico and LocalTuristico have an 'id' property.
     int? itemId;
     bool favoriteStatus = false;
 
-    // Aquí se verifica el tipo de 'item'
     if (widget.item is PuntoTuristico) {
-      itemId = widget.item.id;
+      final punto = widget.item as PuntoTuristico; // Cast for safe access
+      itemId = punto.id;
       favoriteStatus = await _favoriteService.isPuntoTuristicoFavorite(itemId!);
     } else if (widget.item is LocalTuristico) {
-      itemId = widget.item.id;
+      final local = widget.item as LocalTuristico; // Cast for safe access
+      itemId = local.id;
       favoriteStatus = await _favoriteService.isLocalTuristicoFavorite(itemId!);
     } else {
-      // Si el item no es ni PuntoTuristico ni LocalTuristico, no puede ser favorito.
-      // Esto es para el caso de las categorías, por ejemplo.
+      // If the item isn't a PuntoTuristico or LocalTuristico (e.g., a category),
+      // it cannot be favorited, so _isFavorite remains false.
       favoriteStatus = false;
     }
 
@@ -88,7 +89,6 @@ class _CustomCardState extends State<CustomCard>
 
   @override
   Widget build(BuildContext context) {
-    // Accede al tema actual para adaptar los colores
     final theme = Theme.of(context);
     final bool canBeFavorite =
         widget.item is PuntoTuristico || widget.item is LocalTuristico;
@@ -102,20 +102,15 @@ class _CustomCardState extends State<CustomCard>
           animation: _controller,
           builder: (context, _) {
             return Transform.translate(
-              offset:
-                  _positionAnimation.value * MediaQuery.of(context).size.height,
+              offset: _positionAnimation.value * MediaQuery.of(context).size.height,
               child: Card(
-                // Usamos directamente Card en lugar de Container con BoxDecoration
-                color: theme.colorScheme
-                    .surface, // Color de fondo de la tarjeta según el tema
-                elevation: _elevationAnimation.value, // Elevación animada
+                color: theme.colorScheme.surface,
+                elevation: _elevationAnimation.value,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
-                clipBehavior: Clip
-                    .antiAlias, // Para que la imagen respete los bordes redondeados
+                clipBehavior: Clip.antiAlias,
                 child: Stack(
-                  // Usamos Stack para superponer el botón de favoritos
                   children: [
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -127,15 +122,12 @@ class _CustomCardState extends State<CustomCard>
                             width: double.infinity,
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stackTrace) {
-                              // Adapta el color de fondo para la imagen de error
                               return Container(
-                                color: theme.colorScheme
-                                    .surfaceVariant, // Un color que se adapta al tema
+                                color: theme.colorScheme.surfaceVariant,
                                 alignment: Alignment.center,
                                 child: Icon(
                                   Icons.image_not_supported,
-                                  color: theme.colorScheme
-                                      .onSurfaceVariant, // Color del icono que contrasta
+                                  color: theme.colorScheme.onSurfaceVariant,
                                   size: 50,
                                 ),
                               );
@@ -152,8 +144,7 @@ class _CustomCardState extends State<CustomCard>
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
                                 style: theme.textTheme.titleMedium?.copyWith(
-                                  color: theme.colorScheme
-                                      .onSurface, // Color del título según el tema
+                                  color: theme.colorScheme.onSurface,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
@@ -164,8 +155,7 @@ class _CustomCardState extends State<CustomCard>
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: theme.textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.onSurface.withOpacity(
-                                        0.7), // Color del subtítulo según el tema
+                                    color: theme.colorScheme.onSurface.withOpacity(0.7),
                                   ),
                                 ),
                             ],
@@ -173,34 +163,43 @@ class _CustomCardState extends State<CustomCard>
                         ),
                       ],
                     ),
-                    // Botón de favoritos, solo visible si el item puede ser favorito
+                    // Favorite button, only visible if the item can be favorited
                     if (canBeFavorite)
                       Positioned(
                         top: 8,
                         right: 8,
                         child: GestureDetector(
-                          // Usamos GestureDetector para tener más control sobre el tap
                           onTap: () async {
-                            // Lógica para añadir/eliminar de favoritos
+                            // Logic to add/remove from favorites
                             if (widget.item is PuntoTuristico) {
+                              final punto = widget.item as PuntoTuristico;
                               if (_isFavorite) {
                                 await _favoriteService
-                                    .removePuntoTuristicoFromFavorites(
-                                        widget.item.toMap());
+                                    .removePuntoTuristicoFromFavorites(punto.toMap());
                               } else {
-                                await _favoriteService
-                                    .addPuntoTuristicoToFavorites(
-                                        widget.item.toMap());
+                                await _favoriteService.addPuntoTuristicoToFavorites(
+                                  {
+                                    'id': punto.id,
+                                    'nombre': punto.nombre,
+                                    'descripcion': punto.descripcion,
+                                    'imagenUrl': punto.imagenUrl, // Assuming this property exists in PuntoTuristico
+                                  },
+                                );
                               }
                             } else if (widget.item is LocalTuristico) {
+                              final local = widget.item as LocalTuristico;
                               if (_isFavorite) {
                                 await _favoriteService
-                                    .removeLocalTuristicoFromFavorites(
-                                        widget.item.toMap());
+                                    .removeLocalTuristicoFromFavorites(local.toMap());
                               } else {
-                                await _favoriteService
-                                    .addLocalTuristicoToFavorites(
-                                        widget.item.toMap());
+                                await _favoriteService.addLocalTuristicoToFavorites(
+                                  {
+                                    'id': local.id,
+                                    'nombre': local.nombre,
+                                    'descripcion': local.descripcion,
+                                    'imagenUrl': local.imagenUrl, // Assuming this property exists in LocalTuristico
+                                  },
+                                );
                               }
                             }
                             if (mounted) {
@@ -210,21 +209,16 @@ class _CustomCardState extends State<CustomCard>
                             }
                           },
                           child: Container(
-                            // Envuelve el icono en un Container para el fondo circular
                             padding: const EdgeInsets.all(4),
                             decoration: BoxDecoration(
-                              color: theme.colorScheme.surface.withOpacity(
-                                  0.8), // Fondo semitransparente que se adapta al tema
+                              color: theme.colorScheme.surface.withOpacity(0.8),
                               shape: BoxShape.circle,
                             ),
                             child: Icon(
-                              _isFavorite
-                                  ? Icons.favorite
-                                  : Icons.favorite_border,
+                              _isFavorite ? Icons.favorite : Icons.favorite_border,
                               color: _isFavorite
                                   ? Colors.red
-                                  : theme.colorScheme.onSurface
-                                      .withOpacity(0.7), // Color del corazón
+                                  : theme.colorScheme.onSurface.withOpacity(0.7),
                               size: 24,
                             ),
                           ),
