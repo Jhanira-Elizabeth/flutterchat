@@ -3,6 +3,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart' as geocoding;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../../services/cache_service.dart';
 import '../../models/punto_turistico.dart';
 import '../../widgets/bottom_navigation_bar_turistico.dart';
 import '../../providers/theme_provider.dart';
@@ -309,21 +310,13 @@ class _DetallesParroquiaScreenState extends State<DetallesParroquiaScreen>
                           ),
 // ...existing code...
                           // Ubicación
-                          FutureBuilder<List<geocoding.Location>>(
-                            future: geocoding.locationFromAddress(
-                              '${parroquia.nombre}, Santo Domingo de los Tsáchilas, Ecuador'),
+                          FutureBuilder<LatLng>(
+                            future: _getParroquiaCoords(parroquia),
                             builder: (context, snapshot) {
                               if (snapshot.connectionState == ConnectionState.waiting) {
                                 return Center(child: CircularProgressIndicator());
                               }
-                              LatLng coords;
-                              if (snapshot.hasData && snapshot.data!.isNotEmpty) {
-                                final loc = snapshot.data!.first;
-                                coords = LatLng(loc.latitude, loc.longitude);
-                              } else {
-                                // Coordenadas por defecto
-                                coords = const LatLng(-0.2520, -79.1764);
-                              }
+                              LatLng coords = snapshot.data ?? const LatLng(-0.2520, -79.1764);
                               return SizedBox(
                                 height: 250,
                                 child: ClipRRect(
@@ -346,6 +339,26 @@ class _DetallesParroquiaScreenState extends State<DetallesParroquiaScreen>
                               );
                             },
                           ),
+
+  Future<LatLng> _getParroquiaCoords(Parroquia parroquia) async {
+    final boxName = 'parroquiaCoordsCache';
+    final cacheKey = parroquia.nombre;
+    final cached = await CacheService.getData(boxName, cacheKey);
+    if (cached != null && cached is Map<String, dynamic>) {
+      return LatLng(cached['lat'] as double, cached['lng'] as double);
+    }
+    final locations = await geocoding.locationFromAddress(
+      '${parroquia.nombre}, Santo Domingo de los Tsáchilas, Ecuador');
+    if (locations.isNotEmpty) {
+      final loc = locations.first;
+      await CacheService.saveData(boxName, cacheKey, {
+        'lat': loc.latitude,
+        'lng': loc.longitude,
+      });
+      return LatLng(loc.latitude, loc.longitude);
+    }
+    return const LatLng(-0.2520, -79.1764);
+  }
                         ],
                       ),
                     ),

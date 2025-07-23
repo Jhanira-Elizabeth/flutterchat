@@ -7,6 +7,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
+import '../services/cache_service.dart';
 
 class ChatbotScreen extends StatefulWidget {
   const ChatbotScreen({super.key});
@@ -36,22 +37,52 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   Future<void> _initOrLoadLastConversation() async {
     final user = FirebaseAuth.instance.currentUser;
     final uid = user?.uid ?? 'anonimo';
-    final convRef = FirebaseFirestore.instance
-        .collection('chats')
-        .doc(uid)
-        .collection('conversaciones');
-    final querySnapshot =
-        await convRef.orderBy('timestamp', descending: true).limit(1).get();
-    if (querySnapshot.docs.isEmpty) {
-      // No hay conversaciones previas, crea una nueva
-      await _startNewConversation();
-    } else {
-      final lastConv = querySnapshot.docs.first;
+    final boxName = 'chatbotCache';
+    final cacheKey = 'lastConv_$uid';
+    final cached = await CacheService.getData(boxName, cacheKey);
+    if (cached != null && cached is Map<String, dynamic>) {
       setState(() {
-        _currentConversationId = lastConv.id;
+        _currentConversationId = cached['convId'] as String?;
       });
-      await _loadChatHistory(conversationId: _currentConversationId);
+      await _loadChatHistoryFromCache(cached['messages'] as List?);
+    } else {
+      final convRef = FirebaseFirestore.instance
+          .collection('chats')
+          .doc(uid)
+          .collection('conversaciones');
+      final querySnapshot =
+          await convRef.orderBy('timestamp', descending: true).limit(1).get();
+      if (querySnapshot.docs.isEmpty) {
+        // No hay conversaciones previas, crea una nueva
+        await _startNewConversation();
+      } else {
+        final lastConv = querySnapshot.docs.first;
+        setState(() {
+          _currentConversationId = lastConv.id;
+        });
+        await _loadChatHistory(conversationId: _currentConversationId);
+      }
     }
+  }
+
+  Future<void> _loadChatHistoryFromCache(List? cachedMessages) async {
+    setState(() {
+      _messages.clear();
+      if (cachedMessages == null || cachedMessages.isEmpty) {
+        _messages.add(_Message(
+          text: "Hola viajero! ¿Qué quieres saber hoy?",
+          isUser: false,
+        ));
+      } else {
+        for (var msg in cachedMessages) {
+          _messages.add(_Message(
+            text: msg['text'] ?? '',
+            isUser: msg['isUser'] ?? false,
+          ));
+        }
+      }
+    });
+    _scrollToBottom();
   }
 
   Future<void> _startNewConversation() async {
@@ -76,8 +107,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     _scrollToBottom();
   }
 
-  Future<void> _loadChatHistory(
-      {List<DocumentSnapshot>? docs, String? conversationId}) async {
+  Future<void> _loadChatHistory({List<DocumentSnapshot>? docs, String? conversationId}) async {
     final convId = conversationId ?? _currentConversationId;
     if (convId == null) return;
     final user = FirebaseAuth.instance.currentUser;
@@ -88,8 +118,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         .collection('conversaciones')
         .doc(convId)
         .collection('mensajes');
-    final querySnapshot =
-        docs == null ? await msgRef.orderBy('timestamp').get() : null;
+    final querySnapshot = docs == null ? await msgRef.orderBy('timestamp').get() : null;
     final messagesDocs = docs ?? querySnapshot!.docs;
 
     setState(() {
@@ -108,6 +137,14 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
           ));
         }
       }
+    });
+    // Guardar historial en Hive
+    final boxName = 'chatbotCache';
+    final cacheKey = 'lastConv_$uid';
+    final cacheMessages = _messages.map((m) => {'text': m.text, 'isUser': m.isUser}).toList();
+    await CacheService.saveData(boxName, cacheKey, {
+      'convId': convId,
+      'messages': cacheMessages,
     });
     _scrollToBottom();
   }
@@ -217,6 +254,15 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     setState(() {
       _messages.add(_Message(text: reply, isUser: false));
       _waitingBotReply = false;
+    });
+
+    // Guardar historial actualizado en Hive
+    final boxName = 'chatbotCache';
+    final cacheKey = 'lastConv_$uid';
+    final cacheMessages = _messages.map((m) => {'text': m.text, 'isUser': m.isUser}).toList();
+    await CacheService.saveData(boxName, cacheKey, {
+      'convId': _currentConversationId,
+      'messages': cacheMessages,
     });
 
     _controller.clear();
