@@ -16,6 +16,7 @@ class ChatbotScreen extends StatefulWidget {
 }
 
 class _ChatbotScreenState extends State<ChatbotScreen> {
+  bool _waitingBotReply = false;
   final List<_Message> _messages = [];
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
@@ -152,7 +153,10 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   }
 
   void _sendMessage(String text) async {
-    if (text.trim().isEmpty || _currentConversationId == null) return;
+    if (text.trim().isEmpty || _currentConversationId == null || _waitingBotReply) return;
+    setState(() {
+      _waitingBotReply = true;
+    });
 
     // Obtén el UID del usuario actual
     final user = FirebaseAuth.instance.currentUser;
@@ -213,6 +217,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
 
     setState(() {
       _messages.add(_Message(text: reply, isUser: false));
+      _waitingBotReply = false;
     });
 
     _controller.clear();
