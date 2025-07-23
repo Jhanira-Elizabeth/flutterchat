@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart'; // Importa Provider
+import '../services/cache_service.dart';
 import '../widgets/custom_card.dart'; // Importa el CustomCard widget
 import '../widgets/bottom_navigation_bar_turistico.dart'; // Importa el widget
 import '../providers/theme_provider.dart'; // Importa tu ThemeProvider
@@ -14,47 +15,12 @@ class CategoriasScreen extends StatefulWidget {
 class _CategoriasScreenState extends State<CategoriasScreen> {
   int _currentIndex = 0; // Por defecto, seleccionamos 'Inicio'
 
-  final List<Map<String, dynamic>> categorias = [
-    {
-      'nombre': 'Etnia Tsáchila',
-      'imagen': 'assets/images/Mushily1.jpg',
-      'route': '/etniatsachila',
-    },
-    {
-      'nombre': 'Atracciones',
-      'imagen': 'assets/images/GorilaPark1.jpg',
-      'route': '/atracciones',
-    },
-    {
-      'nombre': 'Parroquias',
-      'imagen': 'assets/images/ValleHermoso1.jpg',
-      'route': '/parroquias', 
-    },
-    {
-      'nombre': 'Alojamiento',
-      'imagen': 'assets/images/HotelRefugio1.jpg',
-      'route': '/alojamiento',
-    },
-    {
-      'nombre': 'Alimentos',
-      'imagen': 'assets/images/OhQueRico1.jpg',
-      'route': '/alimentacion',
-    },
-    {
-      'nombre': 'Parques',
-      'imagen': 'assets/images/ParqueJuventud1.jpg',
-      'route': '/parques',
-    },
-    {
-      'nombre': 'Rios',
-      'imagen': 'assets/images/SanGabriel1.jpg',
-      'route': '/rios',
-    },
-  ];
+  List<Map<String, dynamic>> categorias = [];
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    _loadCategorias();
     // Determinar el currentIndex basado en la ruta actual si es necesario.
     final currentRoute = ModalRoute.of(context)?.settings.name;
     if (currentRoute == '/home') {
@@ -67,6 +33,59 @@ class _CategoriasScreenState extends State<CategoriasScreen> {
       _currentIndex = 3;
     } else if (currentRoute == '/categorias') {
       _currentIndex = 0; // Si esta pantalla no es una pestaña principal, puede apuntar a 'Home'
+    }
+  }
+
+  Future<void> _loadCategorias() async {
+    final boxName = 'categoriasCache';
+    final cacheKey = 'categoriasList';
+    final cached = await CacheService.getData(boxName, cacheKey);
+    if (cached != null) {
+      setState(() {
+        categorias = List<Map<String, dynamic>>.from(cached);
+      });
+    } else {
+      final defaultCategorias = [
+        {
+          'nombre': 'Etnia Tsáchila',
+          'imagen': 'assets/images/Mushily1.jpg',
+          'route': '/etniatsachila',
+        },
+        {
+          'nombre': 'Atracciones',
+          'imagen': 'assets/images/GorilaPark1.jpg',
+          'route': '/atracciones',
+        },
+        {
+          'nombre': 'Parroquias',
+          'imagen': 'assets/images/ValleHermoso1.jpg',
+          'route': '/parroquias',
+        },
+        {
+          'nombre': 'Alojamiento',
+          'imagen': 'assets/images/HotelRefugio1.jpg',
+          'route': '/alojamiento',
+        },
+        {
+          'nombre': 'Alimentos',
+          'imagen': 'assets/images/OhQueRico1.jpg',
+          'route': '/alimentacion',
+        },
+        {
+          'nombre': 'Parques',
+          'imagen': 'assets/images/ParqueJuventud1.jpg',
+          'route': '/parques',
+        },
+        {
+          'nombre': 'Rios',
+          'imagen': 'assets/images/SanGabriel1.jpg',
+          'route': '/rios',
+        },
+      ];
+      await CacheService.saveData(boxName, cacheKey, defaultCategorias);
+      setState(() {
+        categorias = defaultCategorias;
+      });
     }
   }
 

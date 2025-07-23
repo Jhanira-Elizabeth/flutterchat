@@ -146,7 +146,6 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
           Navigator.pushReplacementNamed(context, '/favoritos');
           break;
         case 3:
-          // Ya estamos en el chatbot, no navegamos de nuevo a la misma pantalla
           break;
       }
     });
