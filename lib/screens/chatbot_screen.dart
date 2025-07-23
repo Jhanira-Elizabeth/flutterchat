@@ -28,15 +28,19 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     // Oculta las barras de sistema para pantalla completa (gestos para mostrar navegación)
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
 
-    // Iniciar o cargar la última conversación
+    // Iniciar o cargar la última conversación (persistencia mientras la app esté abierta)
     _initOrLoadLastConversation();
   }
 
   Future<void> _initOrLoadLastConversation() async {
     final user = FirebaseAuth.instance.currentUser;
     final uid = user?.uid ?? 'anonimo';
-    final convRef = FirebaseFirestore.instance.collection('chats').doc(uid).collection('conversaciones');
-    final querySnapshot = await convRef.orderBy('timestamp', descending: true).limit(1).get();
+    final convRef = FirebaseFirestore.instance
+        .collection('chats')
+        .doc(uid)
+        .collection('conversaciones');
+    final querySnapshot =
+        await convRef.orderBy('timestamp', descending: true).limit(1).get();
     if (querySnapshot.docs.isEmpty) {
       // No hay conversaciones previas, crea una nueva
       await _startNewConversation();
@@ -53,7 +57,10 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     // Crea una nueva conversación y actualiza el estado
     final user = FirebaseAuth.instance.currentUser;
     final uid = user?.uid ?? 'anonimo';
-    final convRef = FirebaseFirestore.instance.collection('chats').doc(uid).collection('conversaciones');
+    final convRef = FirebaseFirestore.instance
+        .collection('chats')
+        .doc(uid)
+        .collection('conversaciones');
     final newConv = await convRef.add({
       'timestamp': FieldValue.serverTimestamp(),
     });
@@ -68,13 +75,20 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     _scrollToBottom();
   }
 
-  Future<void> _loadChatHistory({List<DocumentSnapshot>? docs, String? conversationId}) async {
+  Future<void> _loadChatHistory(
+      {List<DocumentSnapshot>? docs, String? conversationId}) async {
     final convId = conversationId ?? _currentConversationId;
     if (convId == null) return;
     final user = FirebaseAuth.instance.currentUser;
     final uid = user?.uid ?? 'anonimo';
-    final msgRef = FirebaseFirestore.instance.collection('chats').doc(uid).collection('conversaciones').doc(convId).collection('mensajes');
-    final querySnapshot = docs == null ? await msgRef.orderBy('timestamp').get() : null;
+    final msgRef = FirebaseFirestore.instance
+        .collection('chats')
+        .doc(uid)
+        .collection('conversaciones')
+        .doc(convId)
+        .collection('mensajes');
+    final querySnapshot =
+        docs == null ? await msgRef.orderBy('timestamp').get() : null;
     final messagesDocs = docs ?? querySnapshot!.docs;
 
     setState(() {
@@ -100,8 +114,12 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   Future<List<List<DocumentSnapshot>>> _getConversationsHistory() async {
     final user = FirebaseAuth.instance.currentUser;
     final uid = user?.uid ?? 'anonimo';
-    final convRef = FirebaseFirestore.instance.collection('chats').doc(uid).collection('conversaciones');
-    final convSnapshot = await convRef.orderBy('timestamp', descending: true).get();
+    final convRef = FirebaseFirestore.instance
+        .collection('chats')
+        .doc(uid)
+        .collection('conversaciones');
+    final convSnapshot =
+        await convRef.orderBy('timestamp', descending: true).get();
     List<List<DocumentSnapshot>> conversations = [];
     for (var convDoc in convSnapshot.docs) {
       final msgRef = convDoc.reference.collection('mensajes');
@@ -112,8 +130,6 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   }
 
   bool _historyModalOpen = false;
-
-
 
   void _onTabChange(int index) {
     setState(() {
@@ -141,7 +157,12 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     // Obtén el UID del usuario actual
     final user = FirebaseAuth.instance.currentUser;
     final uid = user?.uid ?? 'anonimo';
-    final msgRef = FirebaseFirestore.instance.collection('chats').doc(uid).collection('conversaciones').doc(_currentConversationId).collection('mensajes');
+    final msgRef = FirebaseFirestore.instance
+        .collection('chats')
+        .doc(uid)
+        .collection('conversaciones')
+        .doc(_currentConversationId)
+        .collection('mensajes');
 
     // Obtén la ubicación actual
     double? latitude;
@@ -151,8 +172,10 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
-      if (permission == LocationPermission.whileInUse || permission == LocationPermission.always) {
-        Position position = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      if (permission == LocationPermission.whileInUse ||
+          permission == LocationPermission.always) {
+        Position position = await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.high);
         latitude = position.latitude;
         longitude = position.longitude;
       }
@@ -178,7 +201,8 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     _scrollToBottom();
 
     // Llama al método que genera la respuesta y maneja la estructura
-    String reply = await _getFormattedBotReply(text, latitude: latitude, longitude: longitude);
+    String reply = await _getFormattedBotReply(text,
+        latitude: latitude, longitude: longitude);
 
     // Guarda la respuesta del bot en Firestore
     await msgRef.add({
@@ -206,17 +230,24 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   }
 
   // Nuevo método para obtener y formatear la respuesta del bot, ahora acepta ubicación
-  Future<String> _getFormattedBotReply(String userText, {double? latitude, double? longitude}) async {
+  Future<String> _getFormattedBotReply(String userText,
+      {double? latitude, double? longitude}) async {
     try {
+      print('Current conversation ID: $_currentConversationId');
       final body = {
+        'chat_id': _currentConversationId ?? 'sin_chat_id',
         'message': userText,
         if (latitude != null && longitude != null) ...{
           'latitude': latitude,
           'longitude': longitude,
         },
       };
+
+      print(
+          'Sending body: ${jsonEncode(body)}'); // Esto te mostrará el JSON exacto que envías
       final response = await http.post(
-        Uri.parse('https://tursd-chatbot-fqdxgsa4arb8fjf9.brazilsouth-01.azurewebsites.net/chat'),
+        Uri.parse(
+            'https://tursd-chatbot-fqdxgsa4arb8fjf9.brazilsouth-01.azurewebsites.net/chat'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(body),
       );
@@ -264,7 +295,8 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                 }
 
               case 'lugar_turistico_bd':
-                String nombre = botResponse['nombre_lugar'] ?? 'Lugar turístico';
+                String nombre =
+                    botResponse['nombre_lugar'] ?? 'Lugar turístico';
                 String descripcion = botResponse['descripcion'] ?? '';
                 List<dynamic> servicios = botResponse['servicios'] ?? [];
                 List<dynamic> actividades = botResponse['actividades'] ?? [];
@@ -281,7 +313,8 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                 return textoOriginal;
 
               case 'servicios_info':
-                String servicioBuscado = botResponse['servicio_buscado'] ?? 'servicio';
+                String servicioBuscado =
+                    botResponse['servicio_buscado'] ?? 'servicio';
                 List<dynamic> lugares = botResponse['lugares'] ?? [];
                 if (lugares.isNotEmpty) {
                   return '¡Claro! Encontré lugares con **$servicioBuscado** en Santo Domingo de los Tsáchilas, como:\n\n'
@@ -293,7 +326,8 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                 }
 
               case 'lugares_multiples':
-                String terminoRelacionado = botResponse['termino_relacionado'] ?? 'este tipo de lugar';
+                String terminoRelacionado =
+                    botResponse['termino_relacionado'] ?? 'este tipo de lugar';
                 List<dynamic> lugares = botResponse['lugares'] ?? [];
                 if (lugares.isNotEmpty) {
                   return '¡Excelente! Aquí tienes varios lugares relacionados con **$terminoRelacionado** en Santo Domingo de los Tsáchilas:\n\n'
@@ -373,7 +407,8 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                 await showModalBottomSheet(
                   context: context,
                   shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                    borderRadius:
+                        BorderRadius.vertical(top: Radius.circular(20)),
                   ),
                   builder: (context) {
                     return Container(
@@ -382,7 +417,9 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text('Historial de conversaciones', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                          const Text('Historial de conversaciones',
+                              style: TextStyle(
+                                  fontSize: 18, fontWeight: FontWeight.bold)),
                           const SizedBox(height: 12),
                           if (conversations.isEmpty)
                             const Text('No hay conversaciones previas.')
@@ -392,10 +429,15 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                               child: ListView.builder(
                                 itemCount: conversations.length,
                                 itemBuilder: (context, idx) {
-                                  final conv = conversations[idx].cast<QueryDocumentSnapshot>();
+                                  final conv = conversations[idx]
+                                      .cast<QueryDocumentSnapshot>();
                                   final validMsgs = conv.where((doc) {
-                                    final data = doc.data() as Map<String, dynamic>;
-                                    return (data['text'] != null && (data['text'] as String).trim().isNotEmpty);
+                                    final data =
+                                        doc.data() as Map<String, dynamic>;
+                                    return (data['text'] != null &&
+                                        (data['text'] as String)
+                                            .trim()
+                                            .isNotEmpty);
                                   }).toList();
                                   if (validMsgs.isEmpty) {
                                     return const SizedBox.shrink();
@@ -403,23 +445,34 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                                   QueryDocumentSnapshot? firstUserMsg;
                                   try {
                                     firstUserMsg = validMsgs.firstWhere((doc) {
-                                      final data = doc.data() as Map<String, dynamic>;
+                                      final data =
+                                          doc.data() as Map<String, dynamic>;
                                       return data['isUser'] == true;
                                     }, orElse: () => validMsgs[0]);
                                   } catch (e) {
                                     firstUserMsg = validMsgs[0];
                                   }
-                                  final data = firstUserMsg.data() as Map<String, dynamic>;
-                                  final date = (data['timestamp'] as Timestamp?)?.toDate();
+                                  final data = firstUserMsg.data()
+                                      as Map<String, dynamic>;
+                                  final date = (data['timestamp'] as Timestamp?)
+                                      ?.toDate();
                                   final preview = data['text'] ?? '';
                                   return ListTile(
-                                    title: Text(preview.isNotEmpty ? preview : 'Sin mensajes de usuario', maxLines: 1, overflow: TextOverflow.ellipsis),
-                                    subtitle: date != null ? Text('${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute}') : null,
+                                    title: Text(
+                                        preview.isNotEmpty
+                                            ? preview
+                                            : 'Sin mensajes de usuario',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis),
+                                    subtitle: date != null
+                                        ? Text(
+                                            '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute}')
+                                        : null,
                                     onTap: validMsgs.isNotEmpty
                                         ? () {
                                             Navigator.pop(context);
                                             _loadChatHistory(docs: validMsgs);
-                                        }
+                                          }
                                         : null,
                                   );
                                 },
@@ -497,7 +550,8 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: msg.isUser
-                            ? const Color.fromARGB(255, 148, 219, 252) // Celeste claro para usuario
+                            ? const Color.fromARGB(255, 148, 219,
+                                252) // Celeste claro para usuario
                             : const Color(0xFFF8F9FA),
                         borderRadius: BorderRadius.circular(24),
                         boxShadow: [

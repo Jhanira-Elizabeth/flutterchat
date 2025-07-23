@@ -224,6 +224,7 @@ class _DetallesParroquiaScreenState extends State<DetallesParroquiaScreen>
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
+                                  const SizedBox(height: 16),
                                   const SizedBox(height: 24),
                                   // Calificación y comentarios para parroquia
                                   Text('Calificación', style: theme.textTheme.titleLarge?.copyWith(color: theme.colorScheme.primary)),
