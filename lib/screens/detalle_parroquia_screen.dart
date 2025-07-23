@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart' as geocoding;
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import '../../services/cache_service.dart';
 import '../../models/punto_turistico.dart';
 import '../../widgets/bottom_navigation_bar_turistico.dart';
 import '../../providers/theme_provider.dart';
@@ -12,10 +10,30 @@ class DetallesParroquiaScreen extends StatefulWidget {
   const DetallesParroquiaScreen({Key? key}) : super(key: key);
 
   @override
-  _DetallesParroquiaScreenState createState() => _DetallesParroquiaScreenState();
+  _DetallesParroquiaScreenState createState() =>
+      _DetallesParroquiaScreenState();
 }
 
 class _DetallesParroquiaScreenState extends State<DetallesParroquiaScreen>
+  Future<LatLng> _getParroquiaCoords(Parroquia parroquia) async {
+    final boxName = 'parroquiaCoordsCache';
+    final cacheKey = parroquia.nombre;
+    final cached = await CacheService.getData(boxName, cacheKey);
+    if (cached != null && cached is Map<String, dynamic>) {
+      return LatLng(cached['lat'] as double, cached['lng'] as double);
+    }
+    final locations = await geocoding.locationFromAddress(
+      '${parroquia.nombre}, Santo Domingo de los Tsáchilas, Ecuador');
+    if (locations.isNotEmpty) {
+      final loc = locations.first;
+      await CacheService.saveData(boxName, cacheKey, {
+        'lat': loc.latitude,
+        'lng': loc.longitude,
+      });
+      return LatLng(loc.latitude, loc.longitude);
+    }
+    return const LatLng(-0.2520, -79.1764);
+  }
     with TickerProviderStateMixin {
   late TabController _tabController;
   int _currentIndex = 0; // Para la BottomNavigationBar
@@ -55,13 +73,11 @@ class _DetallesParroquiaScreenState extends State<DetallesParroquiaScreen>
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final themeProvider = Provider.of<ThemeProvider>(context); // Accede al ThemeProvider
+
     final args = ModalRoute.of(context)!.settings.arguments as Map;
     final Parroquia parroquia = args['parroquia'];
     final String imageUrl = args['imageUrl'];
-    // Firestore y usuario para calificaciones y comentarios
-    final user = FirebaseAuth.instance.currentUser;
-    final resenasRef = FirebaseFirestore.instance.collection('resenas');
-    final comentariosRef = FirebaseFirestore.instance.collection('comentarios');
 
     return Scaffold(
       backgroundColor: theme.colorScheme.background,
@@ -79,48 +95,6 @@ class _DetallesParroquiaScreenState extends State<DetallesParroquiaScreen>
                   child: Center(
                     child: Icon(Icons.broken_image, color: theme.colorScheme.onSurfaceVariant),
                   ),
-                );
-              },
-            ),
-          ),
-          // Promedio de estrellas en la parte superior derecha
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 16,
-            right: 16,
-            child: StreamBuilder<QuerySnapshot>(
-              stream: resenasRef.where('idLugar', isEqualTo: parroquia.id.toString()).snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const SizedBox();
-                }
-                final docs = snapshot.data?.docs ?? [];
-                double promedio = 0;
-                if (docs.isNotEmpty) {
-                  final calificaciones = docs.map((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    return (data['calificacion'] ?? 0).toDouble();
-                  }).toList();
-                  promedio = calificaciones.reduce((a, b) => a + b) / calificaciones.length;
-                }
-                int estrellas = promedio.round();
-                return Row(
-                  children: List.generate(5, (i) {
-                    return Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        Icon(
-                          Icons.star_border,
-                          color: theme.colorScheme.onSurface,
-                          size: 32,
-                        ),
-                        Icon(
-                          i < estrellas ? Icons.star : Icons.star_border,
-                          color: Colors.amber,
-                          size: 28,
-                        ),
-                      ],
-                    );
-                  }),
                 );
               },
             ),
@@ -226,89 +200,42 @@ class _DetallesParroquiaScreenState extends State<DetallesParroquiaScreen>
                                     ),
                                   ),
                                   const SizedBox(height: 16),
-                                  const SizedBox(height: 24),
-                                  // Calificación y comentarios para parroquia
-                                  Text('Calificación', style: theme.textTheme.titleLarge?.copyWith(color: theme.colorScheme.primary)),
-                                  const SizedBox(height: 8),
-                                  if (user != null)
-                                    _CalificacionWidget(lugarId: parroquia.id.toString(), user: user, resenasRef: resenasRef),
-                                  const SizedBox(height: 24),
-                                  Text('Comentarios', style: theme.textTheme.titleLarge?.copyWith(color: theme.colorScheme.primary)),
-                                  const SizedBox(height: 8),
-                                  if (user != null)
+                                  // Actividades y servicios
+                                  if (parroquia.actividades != null && parroquia.actividades.isNotEmpty) ...[
+                                    Text('Actividades', style: theme.textTheme.titleLarge?.copyWith(color: theme.colorScheme.primary)),
+                                    const SizedBox(height: 8),
                                     Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        StatefulBuilder(
-                                          builder: (context, setState) {
-                                            final controllerComentario = TextEditingController();
-                                            return Card(
-                                              child: Row(
-                                                children: [
-                                                  Expanded(
-                                                    child: TextField(
-                                                      controller: controllerComentario,
-                                                      decoration: const InputDecoration(hintText: 'Escribe un comentario...'),
-                                                      maxLines: 1,
-                                                    ),
-                                                  ),
-                                                  IconButton(
-                                                    icon: const Icon(Icons.send),
-                                                    onPressed: () async {
-                                                      final value = controllerComentario.text.trim();
-                                                      if (value.isNotEmpty) {
-                                                        await comentariosRef.add({
-                                                          'idLugar': parroquia.id.toString(),
-                                                          'uid': user.uid,
-                                                          'nombreUsuario': user.displayName ?? '',
-                                                          'fotoUsuario': user.photoURL ?? '',
-                                                          'texto': value,
-                                                          'timestamp': FieldValue.serverTimestamp(),
-                                                        });
-                                                        setState(() {
-                                                          controllerComentario.clear();
-                                                        });
-                                                      }
-                                                    },
-                                                  ),
-                                                ],
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                        StreamBuilder<QuerySnapshot>(
-                                          stream: comentariosRef.where('idLugar', isEqualTo: parroquia.id.toString()).orderBy('timestamp', descending: true).snapshots(),
-                                          builder: (context, snapshot) {
-                                            if (snapshot.connectionState == ConnectionState.waiting) {
-                                              return const CircularProgressIndicator();
-                                            }
-                                            final docs = snapshot.data?.docs ?? [];
-                                            if (docs.isEmpty) {
-                                              return const Text('No hay comentarios aún.');
-                                            }
-                                            return Column(
-                                              children: docs.map((doc) {
-                                                final comentario = doc.data() as Map<String, dynamic>;
-                                                return Card(
-                                                  child: ListTile(
-                                                    leading: CircleAvatar(
-                                                      backgroundImage: NetworkImage(comentario['fotoUsuario'] ?? ''),
-                                                    ),
-                                                    title: Text(comentario['nombreUsuario'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold)),
-                                                    subtitle: Text(comentario['texto'] ?? ''),
-                                                  ),
-                                                );
-                                              }).toList(),
-                                            );
-                                          },
-                                        ),
-                                      ],
+                                      children: parroquia.actividades.map<Widget>((actividad) {
+                                        if (actividad is String) {
+                                          return Text('- $actividad', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurface));
+                                        } else if (actividad is Map && actividad['nombre'] != null) {
+                                          return Text('- ${actividad['nombre']}', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurface));
+                                        }
+                                        return const SizedBox.shrink();
+                                      }).toList(),
                                     ),
+                                  ],
+                                  if (parroquia.servicios != null && parroquia.servicios.isNotEmpty) ...[
+                                    const SizedBox(height: 16),
+                                    Text('Servicios', style: theme.textTheme.titleLarge?.copyWith(color: theme.colorScheme.primary)),
+                                    const SizedBox(height: 8),
+                                    Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: parroquia.servicios.map<Widget>((servicio) {
+                                        if (servicio is String) {
+                                          return Text('- $servicio', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurface));
+                                        } else if (servicio is Map && servicio['servicioNombre'] != null) {
+                                          return Text('- ${servicio['servicioNombre']}', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurface));
+                                        }
+                                        return const SizedBox.shrink();
+                                      }).toList(),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),
                           ),
-// ...existing code...
                           // Ubicación
                           FutureBuilder<LatLng>(
                             future: _getParroquiaCoords(parroquia),
@@ -339,26 +266,6 @@ class _DetallesParroquiaScreenState extends State<DetallesParroquiaScreen>
                               );
                             },
                           ),
-
-  Future<LatLng> _getParroquiaCoords(Parroquia parroquia) async {
-    final boxName = 'parroquiaCoordsCache';
-    final cacheKey = parroquia.nombre;
-    final cached = await CacheService.getData(boxName, cacheKey);
-    if (cached != null && cached is Map<String, dynamic>) {
-      return LatLng(cached['lat'] as double, cached['lng'] as double);
-    }
-    final locations = await geocoding.locationFromAddress(
-      '${parroquia.nombre}, Santo Domingo de los Tsáchilas, Ecuador');
-    if (locations.isNotEmpty) {
-      final loc = locations.first;
-      await CacheService.saveData(boxName, cacheKey, {
-        'lat': loc.latitude,
-        'lng': loc.longitude,
-      });
-      return LatLng(loc.latitude, loc.longitude);
-    }
-    return const LatLng(-0.2520, -79.1764);
-  }
                         ],
                       ),
                     ),
@@ -372,109 +279,6 @@ class _DetallesParroquiaScreenState extends State<DetallesParroquiaScreen>
       bottomNavigationBar: BottomNavigationBarTuristico(
         currentIndex: _currentIndex,
         onTabChange: _onTabChange,
-      ),
-    );
-  }
-}
-
-// Widget para calificación sin reseña
-class _CalificacionWidget extends StatefulWidget {
-  final String lugarId;
-  final User user;
-  final CollectionReference resenasRef;
-  const _CalificacionWidget({required this.lugarId, required this.user, required this.resenasRef});
-
-  @override
-  State<_CalificacionWidget> createState() => _CalificacionWidgetState();
-}
-
-class _CalificacionWidgetState extends State<_CalificacionWidget> {
-  double _calificacion = 3;
-  String? _docId;
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadCalificacion();
-  }
-
-  Future<void> _loadCalificacion() async {
-    final query = await widget.resenasRef
-        .where('idLugar', isEqualTo: widget.lugarId)
-        .where('uid', isEqualTo: widget.user.uid)
-        .limit(1)
-        .get();
-    if (query.docs.isNotEmpty) {
-      final doc = query.docs.first;
-      setState(() {
-        _docId = doc.id;
-        _calificacion = (doc['calificacion'] ?? 3).toDouble();
-        _loading = false;
-      });
-    } else {
-      setState(() {
-        _docId = null;
-        _calificacion = 3;
-        _loading = false;
-      });
-    }
-  }
-
-  Future<void> _guardarCalificacion() async {
-    if (_docId == null) {
-      final docRef = await widget.resenasRef.add({
-        'idLugar': widget.lugarId,
-        'uid': widget.user.uid,
-        'nombreUsuario': widget.user.displayName ?? '',
-        'fotoUsuario': widget.user.photoURL ?? '',
-        'calificacion': _calificacion,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-      setState(() {
-        _docId = docRef.id;
-      });
-    } else {
-      await widget.resenasRef.doc(_docId).update({
-        'calificacion': _calificacion,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
-    }
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Calificación guardada')),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) {
-      return const CircularProgressIndicator();
-    }
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Tu calificación:', style: TextStyle(fontWeight: FontWeight.bold)),
-            Slider(
-              value: _calificacion,
-              min: 1,
-              max: 5,
-              divisions: 4,
-              label: _calificacion.round().toString(),
-              onChanged: (val) {
-                setState(() {
-                  _calificacion = val;
-                });
-              },
-            ),
-            ElevatedButton(
-              onPressed: _guardarCalificacion,
-              child: Text(_docId == null ? 'Guardar calificación' : 'Actualizar calificación'),
-            ),
-          ],
-        ),
       ),
     );
   }
