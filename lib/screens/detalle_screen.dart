@@ -9,6 +9,7 @@ import '../../services/favorite_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../providers/theme_provider.dart';
+import '../../services/cache_service.dart';
 
 class DetallesScreen extends StatefulWidget {
   final Map<String, dynamic>? itemData;
@@ -22,6 +23,19 @@ class DetallesScreen extends StatefulWidget {
 }
 
 class _DetallesScreenState extends State<DetallesScreen> with TickerProviderStateMixin {
+  // Ejemplo: Guardar un PuntoTuristico en caché
+  Future<void> guardarPuntoTuristicoEnCache(PuntoTuristico punto) async {
+    await CacheService.saveData('detalleCache', 'punto_${punto.id}', punto.toMap());
+  }
+
+  // Ejemplo: Leer un PuntoTuristico del caché
+  Future<PuntoTuristico?> leerPuntoTuristicoDeCache(int id) async {
+    final cached = await CacheService.getData('detalleCache', 'punto_${id}');
+    if (cached != null) {
+      return PuntoTuristico.fromJson(Map<String, dynamic>.from(cached));
+    }
+    return null;
+  }
   final resenasRef = FirebaseFirestore.instance.collection('resenas');
   final comentariosRef = FirebaseFirestore.instance.collection('comentarios');
   late TabController _tabController;
@@ -44,11 +58,30 @@ class _DetallesScreenState extends State<DetallesScreen> with TickerProviderStat
     _item = widget.itemData?['item'];
     _imageUrl = widget.itemData?['imageUrl'] ?? 'assets/images/Bomboli8.jpg';
 
-    if (_item != null) {
+    // Integración de caché para PuntoTuristico
+    if (_item is PuntoTuristico) {
+      final punto = _item as PuntoTuristico;
+      leerPuntoTuristicoDeCache(punto.id).then((cachedPunto) async {
+        if (cachedPunto != null) {
+          setState(() {
+            _item = cachedPunto;
+          });
+        } else {
+          // Si no está en caché, obtén de la API y guarda en caché
+          final actividades = await _apiService.fetchActividadesByPunto(punto.id);
+          await guardarPuntoTuristicoEnCache(punto);
+          setState(() {
+            _actividadesFuture = Future.value(actividades);
+          });
+        }
+      });
+      _actividadesFuture = _fetchActividades();
+      _horariosFuture = Future.value([]);
+      _serviciosFuture = Future.value([]);
+    } else if (_item is LocalTuristico) {
       _horariosFuture = _fetchHorarios();
       _serviciosFuture = _fetchServicios();
-      _actividadesFuture = _fetchActividades();
-      // Si tienes lógica de favoritos, agrégala aquí
+      _actividadesFuture = Future.value([]);
     } else {
       _horariosFuture = Future.value([]);
       _serviciosFuture = Future.value([]);

@@ -4,6 +4,7 @@ import '../../widgets/bottom_navigation_bar_turistico.dart';
 import '../../services/favorite_service.dart';
 import '../../widgets/custom_card.dart';
 import '../../models/punto_turistico.dart';
+import '../../services/cache_service.dart';
 
 class FavoritesScreen extends StatefulWidget {
   const FavoritesScreen({super.key});
@@ -47,14 +48,32 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       // Obtener puntos turísticos favoritos como maps
       final favoritePuntosRaw = await _favoriteService.getFavoritePuntos();
       print('Puntos favoritos raw: $favoritePuntosRaw');
-      
+
+      // Guardar puntos turísticos favoritos en caché
+      for (var puntoMap in favoritePuntosRaw) {
+        try {
+          await CacheService.saveData('favoritesCache', 'punto_${puntoMap['id']}', puntoMap);
+        } catch (e) {
+          print('Error al guardar punto turístico en caché: $e');
+        }
+      }
+
       // Obtener locales turísticos favoritos como maps
       final favoriteLocalesRaw = await _favoriteService.getFavoriteLocales();
       print('Locales favoritos raw: $favoriteLocalesRaw');
 
+      // Guardar locales turísticos favoritos en caché
+      for (var localMap in favoriteLocalesRaw) {
+        try {
+          await CacheService.saveData('favoritesCache', 'local_${localMap['id']}', localMap);
+        } catch (e) {
+          print('Error al guardar local turístico en caché: $e');
+        }
+      }
+
       // Crear una lista mixta que incluya tanto los objetos como información de tipo
       List<dynamic> allFavorites = [];
-      
+
       // Agregar puntos turísticos
       for (var puntoMap in favoritePuntosRaw) {
         try {
@@ -67,7 +86,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
           allFavorites.add(puntoMap);
         }
       }
-      
+
       // Agregar locales turísticos
       for (var localMap in favoriteLocalesRaw) {
         try {
