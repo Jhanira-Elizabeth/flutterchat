@@ -8,6 +8,8 @@ import '../widgets/bottom_navigation_bar_turistico.dart';
 import '../services/auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:core';
+import '../../services/cache_service.dart';
+
 // Si usas CarouselSlider en Home, asegúrate de tenerlo importado y añadido a pubspec.yaml
 // import 'package:carousel_slider/carousel_slider.dart';
 
@@ -98,79 +100,97 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _cargarPuntosTuristicos() {
+    final nuevosPuntos = [
+      PuntoTuristico(
+        id: 3,
+        nombre: 'Comuna Tsáchila Congoma',
+        imagenUrl: 'assets/images/congoma1.jpg',
+        descripcion:
+            'Comunidad ancestral Tsáchila que conserva tradiciones culturales únicas, con actividades interactivas para los visitantes.',
+        latitud: -0.390846,
+        longitud: -79.351443,
+        idParroquia: 39,
+        estado: 'activo',
+        esRecomendado: true,
+      ),
+      PuntoTuristico(
+        id: 5,
+        nombre: 'Zoológico La Isla del Tapir',
+        imagenUrl: 'assets/images/Tapir5.jpg',
+        descripcion:
+            'Es un lugar ecológico y recreativo.\nproyectado a la conservación de la Flora y Fauna.',
+        latitud: -0.117760,
+        longitud: -79.258118,
+        idParroquia: 37,
+        estado: 'activo',
+        esRecomendado: true,
+      ),
+    ];
     setState(() {
-      puntosRecomendados.addAll([
-        PuntoTuristico(
-          id: 3,
-          nombre: 'Comuna Tsáchila Congoma',
-          imagenUrl: 'assets/images/congoma1.jpg',
-          descripcion:
-              'Comunidad ancestral Tsáchila que conserva tradiciones culturales únicas, con actividades interactivas para los visitantes.',
-          latitud: -0.390846,
-          longitud: -79.351443,
-          idParroquia: 39,
-          estado: 'activo',
-          esRecomendado: true,
-        ),
-        PuntoTuristico(
-          id: 5,
-          nombre: 'Zoológico La Isla del Tapir',
-          imagenUrl: 'assets/images/Tapir5.jpg',
-          descripcion:
-              'Es un lugar ecológico y recreativo.\nproyectado a la conservación de la Flora y Fauna.',
-          latitud: -0.117760,
-          longitud: -79.258118,
-          idParroquia: 37,
-          estado: 'activo',
-          esRecomendado: true,
-        ),
-      ]);
+      puntosRecomendados.addAll(nuevosPuntos);
     });
+    // Guardar en caché
+    for (var punto in nuevosPuntos) {
+      try {
+        CacheService.saveData('homeCache', 'punto_${punto.id}', punto.toMap());
+      } catch (e) {
+        print('Error al guardar punto recomendado en caché: $e');
+      }
+    }
   }
 
   void _cargarLocalesRecomendados() {
+    final nuevosLocales = [
+      LocalTuristico(
+        id: 3,
+        nombre: 'Cascadas del Diablo',
+        imagenUrl: 'assets/images/cascadas_diablo.jpg',
+        descripcion:
+            'Se debe escalar una montaña de senderos angostos. La ruta se inicia en el kilómetro 38 de la vía Santo Domingo - Quito.',
+        direccion:
+            'Ubicado el recinto Unión del Toachi, kilometro 38 de la vía Santo Domingo - Quito.',
+        latitud: -0.328215,
+        longitud: -78.948441,
+        estado: 'activo',
+      ),
+      LocalTuristico(
+        id: 4,
+        nombre: 'Balneario Ibiza',
+        imagenUrl: 'assets/images/afiche_publicitario_balneario_ibiza.jpg',
+        descripcion:
+            'Lugar ideal para disfrutar de la naturaleza con piscina, jacuzzi, eventos y karaoke.',
+        direccion: 'Parroquia Alluriquín, km 23 vía Santo Domingo - Quito',
+        latitud: -0.310870,
+        longitud: -79.030298,
+        estado: 'activo',
+      ),
+      LocalTuristico(
+        id: 16,
+        nombre: 'Aventure mini Golf',
+        imagenUrl: 'assets/images/VenturaMiniGolf1.jpg',
+        descripcion:
+            'Este centro de entretenimiento, impulsado por la empresa privada, ofrece opciones como una cancha de pádel, campos de minigolf y un mirador con vistas al río Toachi, promoviendo el disfrute y el desarrollo turístico en la región.',
+        direccion: 'Santo Domingo',
+        latitud: -0.253312,
+        longitud: -79.134135,
+        estado: 'activo',
+      ),
+    ];
     setState(() {
-      localesRecomendados.addAll([
-        LocalTuristico(
-          id: 3,
-          nombre: 'Cascadas del Diablo',
-          imagenUrl: 'assets/images/cascadas_diablo.jpg',
-          descripcion:
-              'Se debe escalar una montaña de senderos angostos. La ruta se inicia en el kilómetro 38 de la vía Santo Domingo - Quito.',
-          direccion:
-              'Ubicado el recinto Unión del Toachi, kilometro 38 de la vía Santo Domingo - Quito.',
-          latitud: -0.328215,
-          longitud: -78.948441,
-          estado: 'activo',
-        ),
-        LocalTuristico(
-          id: 4,
-          nombre: 'Balneario Ibiza',
-          imagenUrl: 'assets/images/afiche_publicitario_balneario_ibiza.jpg',
-          descripcion:
-              'Lugar ideal para disfrutar de la naturaleza con piscina, jacuzzi, eventos y karaoke.',
-          direccion: 'Parroquia Alluriquín, km 23 vía Santo Domingo - Quito',
-          latitud: -0.310870,
-          longitud: -79.030298,
-          estado: 'activo',
-        ),
-        LocalTuristico(
-          id: 16,
-          nombre: 'Aventure mini Golf',
-          imagenUrl: 'assets/images/VenturaMiniGolf1.jpg',
-          descripcion:
-              'Este centro de entretenimiento, impulsado por la empresa privada, ofrece opciones como una cancha de pádel, campos de minigolf y un mirador con vistas al río Toachi, promoviendo el disfrute y el desarrollo turístico en la región.',
-          direccion: 'Santo Domingo',
-          latitud: -0.253312,
-          longitud: -79.134135,
-          estado: 'activo',
-        ),
-      ]);
+      localesRecomendados.addAll(nuevosLocales);
       print('Locales cargados: ${localesRecomendados.length}');
       localesRecomendados.forEach((local) {
         print('Local: ${local.nombre}, tipo: ${local.runtimeType}');
       });
     });
+    // Guardar en caché
+    for (var local in nuevosLocales) {
+      try {
+        CacheService.saveData('homeCache', 'local_${local.id}', local.toMap());
+      } catch (e) {
+        print('Error al guardar local recomendado en caché: $e');
+      }
+    }
   }
 
   // Función para normalizar texto (quitar acentos y convertir a minúsculas)
