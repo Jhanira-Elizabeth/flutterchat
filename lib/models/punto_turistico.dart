@@ -144,17 +144,23 @@ class Actividad {
     this.fechaUltimaEdicion,
   });
 
-  static Actividad fromMap(Map<String, dynamic> map) {
+  factory Actividad.fromJson(Map<String, dynamic> json) {
     return Actividad(
-      id: map['id'] ?? 0,
-      nombre: map['nombre'] ?? '',
-      idPuntoTuristico: map['idPuntoTuristico'] ?? 0,
-      precio: (map['precio'] != null) ? double.parse(map['precio'].toString()) : 0.0,
-      estado: map['estado'] ?? '',
-      creadoPor: map['creadoPor'],
-      editadoPor: map['editadoPor'],
-      fechaCreacion: map['fechaCreacion'] != null ? DateTime.tryParse(map['fechaCreacion']) : null,
-      fechaUltimaEdicion: map['fechaUltimaEdicion'] != null ? DateTime.tryParse(map['fechaUltimaEdicion']) : null,
+      id: json['id'] ?? json['actividad_punto_turistico_id'] ?? 0,
+      nombre: json['actividad'] ?? json['nombre_actividad'] ?? '',
+      idPuntoTuristico: json['idPuntoTuristico'] ?? json['id_punto_turistico'] ?? json['apt_id_punto_turistico'] ?? 0,
+      precio: (json['precio'] != null)
+          ? double.parse(json['precio'].toString())
+          : 0.0,
+      estado: json['estado'] ?? json['estado_actividad'] ?? '',
+      creadoPor: json['creadoPor'] ?? json['creado_por'] ?? json['actividad_creado_por'],
+      editadoPor: json['editadoPor'] ?? json['editado_por'] ?? json['actividad_editado_por'],
+      fechaCreacion: (json['fechaCreacion'] != null && json['fechaCreacion'] is String)
+          ? DateTime.parse(json['fechaCreacion'])
+          : null,
+      fechaUltimaEdicion: (json['fechaUltimaEdicion'] != null && json['fechaUltimaEdicion'] is String)
+          ? DateTime.parse(json['fechaUltimaEdicion'])
+          : null,
     );
   }
 
@@ -401,14 +407,14 @@ class HorarioAtencion {
     required this.estado,
   });
 
-  static HorarioAtencion fromMap(Map<String, dynamic> map) {
+  factory HorarioAtencion.fromJson(Map<String, dynamic> json) {
     return HorarioAtencion(
-      id: map['id'] ?? 0,
-      horaInicio: map['horaInicio'] ?? '',
-      horaFin: map['horaFin'] ?? '',
-      diaSemana: map['diaSemana'] ?? '',
-      idLocal: map['idLocal'] ?? 0,
-      estado: map['estado'] ?? 'activo',
+      id: json['id'] ?? json['horario_id'] ?? 0,
+      horaInicio: json['horaInicio'] ?? json['hora_inicio'] ?? '',
+      horaFin: json['horaFin'] ?? json['hora_fin'] ?? '',
+      diaSemana: json['diaSemana'] ?? json['dia_semana'] ?? '',
+      idLocal: json['idLocal'] ?? json['id_local'] ?? 0,
+      estado: json['estado'] ?? json['estado_horario'] ?? 'activo',
     );
   }
 
@@ -438,12 +444,17 @@ class Servicio {
     required this.precio, // Ahora es requerido
   });
 
-  static Servicio fromMap(Map<String, dynamic> map) {
+  factory Servicio.fromJson(Map<String, dynamic> json) {
+    // Asegurarse de que 'precio' se parsee a double, incluso si es String
+    final double parsedPrecio = (json['precio'] != null)
+        ? double.tryParse(json['precio'].toString()) ?? 0.0
+        : 0.0;
+
     return Servicio(
-      id: map['id'] ?? 0,
-      idLocal: map['idLocal'] ?? 0,
-      servicioNombre: map['servicioNombre'] ?? '',
-      precio: (map['precio'] != null) ? double.parse(map['precio'].toString()) : 0.0,
+      id: json['id'] ?? json['servicio_local_id'] ?? 0,
+      idLocal: json['id_local'] ?? 0, // Usamos 'id_local' directamente del JSON
+      servicioNombre: json['servicio'] ?? '', // Mapeamos 'servicio' del JSON
+      precio: parsedPrecio,
     );
   }
 

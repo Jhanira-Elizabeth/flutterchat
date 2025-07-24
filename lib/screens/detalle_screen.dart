@@ -3,7 +3,6 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../models/punto_turistico.dart';
 import '../../services/api_service.dart';
-import '../../services/cache_service.dart';
 import '../../widgets/bottom_navigation_bar_turistico.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/favorite_service.dart';
@@ -61,48 +60,24 @@ class _DetallesScreenState extends State<DetallesScreen> with TickerProviderStat
 
   Future<List<Servicio>> _fetchServicios() async {
     if (_item is LocalTuristico) {
-      final cacheKey = 'servicios_${_item.id}';
-      final boxName = 'detalleCache';
-      // Intentar obtener de caché
-      final cached = await CacheService.getData(boxName, cacheKey);
-      if (cached != null) {
-        return List<Servicio>.from(cached);
-      }
-      // Si no hay caché, consultar API y guardar
-      final servicios = await _apiService.fetchServiciosByLocal(_item.id);
-      await CacheService.saveData(boxName, cacheKey, servicios);
-      return servicios;
+      return _apiService.fetchServiciosByLocal(_item.id);
     }
     return [];
   }
 
   Future<List<Actividad>> _fetchActividades() async {
     if (_item is PuntoTuristico) {
-      final cacheKey = 'actividades_${_item.id}';
-      final boxName = 'detalleCache';
-      final cached = await CacheService.getData(boxName, cacheKey);
-      if (cached != null) {
-        return List<Actividad>.from(cached);
-      }
-      final actividades = await _apiService.fetchActividadesByPunto(_item.id);
-      await CacheService.saveData(boxName, cacheKey, actividades);
-      return actividades;
+      return _apiService.fetchActividadesByPunto(_item.id);
     }
     return [];
   }
 
   Future<List<HorarioAtencion>> _fetchHorarios() async {
     if (_item is LocalTuristico) {
-      final cacheKey = 'horarios_${_item.id}';
-      final boxName = 'detalleCache';
-      final cached = await CacheService.getData(boxName, cacheKey);
-      if (cached != null) {
-        return List<HorarioAtencion>.from(cached);
-      }
       final allHorarios = await _apiService.fetchHorariosByLocal(_item.id);
-      final horarios = allHorarios.where((horario) => horario.idLocal == _item.id).toList();
-      await CacheService.saveData(boxName, cacheKey, horarios);
-      return horarios;
+      return allHorarios
+          .where((horario) => horario.idLocal == _item.id)
+          .toList();
     }
     return [];
   }

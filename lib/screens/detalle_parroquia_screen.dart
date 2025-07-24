@@ -5,6 +5,8 @@ import 'package:geocoding/geocoding.dart' as geocoding;
 import '../../models/punto_turistico.dart';
 import '../../widgets/bottom_navigation_bar_turistico.dart';
 import '../../providers/theme_provider.dart';
+import '../../services/cache_service.dart';
+
 
 class DetallesParroquiaScreen extends StatefulWidget {
   const DetallesParroquiaScreen({Key? key}) : super(key: key);
@@ -14,7 +16,7 @@ class DetallesParroquiaScreen extends StatefulWidget {
       _DetallesParroquiaScreenState();
 }
 
-class _DetallesParroquiaScreenState extends State<DetallesParroquiaScreen>
+class _DetallesParroquiaScreenState extends State<DetallesParroquiaScreen> with TickerProviderStateMixin {
   Future<LatLng> _getParroquiaCoords(Parroquia parroquia) async {
     final boxName = 'parroquiaCoordsCache';
     final cacheKey = parroquia.nombre;
@@ -34,7 +36,6 @@ class _DetallesParroquiaScreenState extends State<DetallesParroquiaScreen>
     }
     return const LatLng(-0.2520, -79.1764);
   }
-    with TickerProviderStateMixin {
   late TabController _tabController;
   int _currentIndex = 0; // Para la BottomNavigationBar
 
@@ -199,39 +200,6 @@ class _DetallesParroquiaScreenState extends State<DetallesParroquiaScreen>
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
-                                  const SizedBox(height: 16),
-                                  // Actividades y servicios
-                                  if (parroquia.actividades != null && parroquia.actividades.isNotEmpty) ...[
-                                    Text('Actividades', style: theme.textTheme.titleLarge?.copyWith(color: theme.colorScheme.primary)),
-                                    const SizedBox(height: 8),
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: parroquia.actividades.map<Widget>((actividad) {
-                                        if (actividad is String) {
-                                          return Text('- $actividad', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurface));
-                                        } else if (actividad is Map && actividad['nombre'] != null) {
-                                          return Text('- ${actividad['nombre']}', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurface));
-                                        }
-                                        return const SizedBox.shrink();
-                                      }).toList(),
-                                    ),
-                                  ],
-                                  if (parroquia.servicios != null && parroquia.servicios.isNotEmpty) ...[
-                                    const SizedBox(height: 16),
-                                    Text('Servicios', style: theme.textTheme.titleLarge?.copyWith(color: theme.colorScheme.primary)),
-                                    const SizedBox(height: 8),
-                                    Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: parroquia.servicios.map<Widget>((servicio) {
-                                        if (servicio is String) {
-                                          return Text('- $servicio', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurface));
-                                        } else if (servicio is Map && servicio['servicioNombre'] != null) {
-                                          return Text('- ${servicio['servicioNombre']}', style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurface));
-                                        }
-                                        return const SizedBox.shrink();
-                                      }).toList(),
-                                    ),
-                                  ],
                                 ],
                               ),
                             ),
