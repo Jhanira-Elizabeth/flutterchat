@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../services/cache_service.dart'; 
 
 class LoginScreen extends StatelessWidget {
   final AuthService _auth = AuthService();
@@ -39,6 +40,18 @@ class LoginScreen extends StatelessWidget {
                   onPressed: () async {
                     final user = await _auth.signInWithGoogle();
                     if (user != null) {
+                      // Guardar usuario en caché
+                      try {
+                        await CacheService.saveData('userCache', 'user', {
+                          'uid': user.uid,
+                          'email': user.email,
+                          'displayName': user.displayName,
+                          'photoURL': user.photoURL,
+                        });
+                        print('Usuario guardado en caché');
+                      } catch (e) {
+                        print('Error al guardar usuario en caché: $e');
+                      }
                       Navigator.pushReplacementNamed(context, '/home');
                     }
                   },
