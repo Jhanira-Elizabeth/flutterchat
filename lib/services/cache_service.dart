@@ -1,6 +1,11 @@
 import 'package:hive/hive.dart';
 
 class CacheService {
+  /// Devuelve todos los datos de un box como Map<String, dynamic>
+  static Future<Map<String, dynamic>> getAllData(String boxName) async {
+    var box = await Hive.openBox(boxName);
+    return Map<String, dynamic>.from(box.toMap());
+  }
   static Future<Box> openBox(String boxName) async {
     return await Hive.openBox(boxName);
   }
