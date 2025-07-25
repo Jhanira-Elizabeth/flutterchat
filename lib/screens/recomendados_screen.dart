@@ -4,6 +4,7 @@ import '../widgets/custom_card.dart'; // Importa el CustomCard
 import '../models/punto_turistico.dart'; // Importa el modelo
 import '../widgets/bottom_navigation_bar_turistico.dart'; // Importa la barra de navegación
 import '../providers/theme_provider.dart'; // Importa tu ThemeProvider
+import '../services/cache_service.dart'; // Importa el servicio de caché
 
 class RecomendadosScreen extends StatefulWidget {
   const RecomendadosScreen({super.key});
@@ -13,6 +14,23 @@ class RecomendadosScreen extends StatefulWidget {
 }
 
 class _RecomendadosScreenState extends State<RecomendadosScreen> {
+  Future<void> _guardarRecomendadosEnCache(List<dynamic> recomendados) async {
+    for (var item in recomendados) {
+      try {
+        String key = '';
+        if (item.runtimeType.toString().contains('PuntoTuristico')) {
+          key = 'punto_${item.id}';
+        } else if (item.runtimeType.toString().contains('LocalTuristico')) {
+          key = 'local_${item.id}';
+        }
+        if (key.isNotEmpty) {
+          await CacheService.saveData('recomendadosCache', key, item.toMap());
+        }
+      } catch (e) {
+        print('Error al guardar recomendado en caché: $e');
+      }
+    }
+  }
   int _currentIndex = 0; // Por defecto, podrías querer mostrar 'Inicio' seleccionado
 
   @override
@@ -80,12 +98,17 @@ class _RecomendadosScreenState extends State<RecomendadosScreen> {
 
   @override
   Widget build(BuildContext context) {
+
     final theme = Theme.of(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
 
-    final recomendados =
-        ModalRoute.of(context)!.settings.arguments as List<dynamic>;
+    final recomendados = ModalRoute.of(context)!.settings.arguments as List<dynamic>;
     print('Recomendados recibidos: ${recomendados.length}');
+
+    // Guardar recomendados en caché al construir la pantalla
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _guardarRecomendadosEnCache(recomendados);
+    });
 
     return Scaffold(
       backgroundColor: theme.colorScheme.background,
