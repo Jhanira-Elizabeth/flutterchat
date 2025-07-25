@@ -3,6 +3,7 @@ import '../../widgets/bottom_navigation_bar_turistico.dart';
 import '../../services/api_service.dart';
 import '../../widgets/custom_card.dart';
 import '../../models/punto_turistico.dart';
+import '../../services/cache_service.dart';
 
 class AtraccionesScreen extends StatefulWidget {
   const AtraccionesScreen({super.key});
@@ -43,20 +44,40 @@ class _AtraccionesScreenState extends State<AtraccionesScreen> {
   Future<List<dynamic>> _fetchAtracciones() async {
     // Trae locales con etiquetas
     final locales = await _apiService.fetchLocalesConEtiquetas();
-    // Filtra locales con etiqueta id 4
     final localesAtracciones = locales.where(
       (local) => local.etiquetas.any((et) => et.id == 4)
     ).toList();
 
     // Trae puntos turísticos con etiquetas
     final puntos = await _apiService.fetchPuntosConEtiquetas();
-    // Filtra puntos con etiqueta id 4
     final puntosAtracciones = puntos.where(
       (punto) => punto.etiquetas.any((et) => et.id == 4)
     ).toList();
 
     // Junta ambos en una sola lista
-    return [...localesAtracciones, ...puntosAtracciones];
+    final atracciones = [...localesAtracciones, ...puntosAtracciones];
+
+    // Guardar en caché
+    for (var item in atracciones) {
+      try {
+        String key = '';
+        dynamic map;
+        if (item is PuntoTuristico) {
+          key = 'punto_${item.id}';
+          map = item.toMap();
+        } else if (item is LocalTuristico) {
+          key = 'local_${item.id}';
+          map = item.toMap();
+        }
+        if (key.isNotEmpty && map != null) {
+          await CacheService.saveData('atraccionesCache', key, map);
+        }
+      } catch (e) {
+        print('Error al guardar atracción en caché: $e');
+      }
+    }
+
+    return atracciones;
   }
 
   void _onTabChange(int index) {
