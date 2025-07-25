@@ -3,6 +3,7 @@ import '../../models/punto_turistico.dart';
 import '../../widgets/bottom_navigation_bar_turistico.dart';
 import '../../services/api_service.dart';
 import '../../widgets/custom_card.dart';
+import '../../services/cache_service.dart';
 
 class AlojamientosScreen extends StatefulWidget {
   const AlojamientosScreen({super.key});
@@ -30,9 +31,20 @@ class _AlojamientosScreenState extends State<AlojamientosScreen> {
   Future<List<LocalTuristico>> _fetchAlojamientosLocales() async {
     final locales = await _apiService.fetchLocalesConEtiquetas();
     // Filtra locales con etiqueta id 3 (Alojamientos)
-    return locales.where(
+    final alojamientos = locales.where(
       (local) => local.etiquetas.any((et) => et.id == 3)
     ).toList();
+
+    // Guardar en caché
+    for (var local in alojamientos) {
+      try {
+        await CacheService.saveData('alojamientosCache', 'local_${local.id}', local.toMap());
+      } catch (e) {
+        print('Error al guardar alojamiento en caché: $e');
+      }
+    }
+
+    return alojamientos;
   }
 
   void _onTabChange(int index) {
