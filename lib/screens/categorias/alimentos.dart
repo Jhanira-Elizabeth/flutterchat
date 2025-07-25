@@ -3,6 +3,7 @@ import '../../widgets/bottom_navigation_bar_turistico.dart';
 import '../../services/api_service.dart';
 import '../../widgets/custom_card.dart';
 import '../../models/punto_turistico.dart';
+import '../../services/cache_service.dart';
 
 class AlimentosScreen extends StatefulWidget {
   const AlimentosScreen({super.key});
@@ -40,20 +41,40 @@ class _AlimentosScreenState extends State<AlimentosScreen> {
   Future<List<dynamic>> _fetchAlimentos() async {
     // Trae locales con etiquetas
     final locales = await _apiService.fetchLocalesConEtiquetas();
-    // Filtra locales con etiqueta id 2
     final localesAlimentos = locales
         .where((local) => local.etiquetas.any((et) => et.id == 2))
         .toList();
 
     // Trae puntos turísticos con etiquetas
     final puntos = await _apiService.fetchPuntosConEtiquetas();
-    // Filtra puntos con etiqueta id 2
     final puntosAlimentos = puntos
         .where((punto) => punto.etiquetas.any((et) => et.id == 2))
         .toList();
 
     // Junta ambos en una sola lista
-    return [...localesAlimentos, ...puntosAlimentos];
+    final alimentos = [...localesAlimentos, ...puntosAlimentos];
+
+    // Guardar en caché
+    for (var item in alimentos) {
+      try {
+        String key = '';
+        dynamic map;
+        if (item is PuntoTuristico) {
+          key = 'punto_${item.id}';
+          map = item.toMap();
+        } else if (item is LocalTuristico) {
+          key = 'local_${item.id}';
+          map = item.toMap();
+        }
+        if (key.isNotEmpty && map != null) {
+          await CacheService.saveData('alimentosCache', key, map);
+        }
+      } catch (e) {
+        print('Error al guardar alimento en caché: $e');
+      }
+    }
+
+    return alimentos;
   }
 
   void _onTabChange(int index) {
