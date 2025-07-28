@@ -434,12 +434,39 @@ class _DetallesScreenState extends State<DetallesScreen> with TickerProviderStat
                                                     onPressed: () async {
                                                       final value = controllerComentario.text.trim();
                                                       if (value.isNotEmpty) {
+                                                        // Datos extra del lugar
+                                                        final nombreLugar = _item?.nombre ?? '';
+                                                        final ubicacion = {
+                                                          'latitud': _item?.latitud ?? '',
+                                                          'longitud': _item?.longitud ?? '',
+                                                        };
+                                                        final descripcion = _item?.descripcion ?? '';
+                                                        List actividades = [];
+                                                        List servicios = [];
+                                                        List horarios = [];
+                                                        if (_item is PuntoTuristico) {
+                                                          actividades = _item.actividades.map((a) => a.nombre).toList();
+                                                        }
+                                                        if (_item is LocalTuristico) {
+                                                          servicios = _item.servicios.map((s) => s.servicioNombre).toList();
+                                                          horarios = _item.horarios.map((h) => {
+                                                            'diaSemana': h.diaSemana,
+                                                            'horaInicio': h.horaInicio,
+                                                            'horaFin': h.horaFin,
+                                                          }).toList();
+                                                        }
                                                         await comentariosRef.add({
                                                           'idLugar': lugarId,
                                                           'uid': user.uid,
                                                           'nombreUsuario': user.displayName ?? '',
                                                           'fotoUsuario': user.photoURL ?? '',
                                                           'texto': value,
+                                                          'nombreLugar': nombreLugar,
+                                                          'ubicacion': ubicacion,
+                                                          'descripcion': descripcion,
+                                                          'actividades': actividades,
+                                                          'servicios': servicios,
+                                                          'horarios': horarios,
                                                           'timestamp': FieldValue.serverTimestamp(),
                                                         });
                                                         setState(() {
@@ -693,26 +720,72 @@ class _CalificacionWidgetState extends State<_CalificacionWidget> {
   }
 
   Future<void> _guardarCalificacion() async {
+    // Obtén el lugar desde el contexto padre
+    final detallesState = context.findAncestorStateOfType<_DetallesScreenState>();
+    final item = detallesState?._item;
+    String comentario = '';
+    // Busca el comentario del usuario si existe en la colección comentarios
+    final comentariosQuery = await detallesState?.comentariosRef
+        .where('idLugar', isEqualTo: widget.lugarId)
+        .where('uid', isEqualTo: widget.user.uid)
+        .orderBy('timestamp', descending: true)
+        .limit(1)
+        .get();
+    if (comentariosQuery != null && comentariosQuery.docs.isNotEmpty) {
+      final data = comentariosQuery.docs.first.data() as Map<String, dynamic>;
+      comentario = data['texto'] ?? '';
+    }
+
+    // Construye los campos extra
+    final nombreLugar = item?.nombre ?? '';
+    final ubicacion = {
+      'latitud': item?.latitud ?? '',
+      'longitud': item?.longitud ?? '',
+    };
+    final descripcion = item?.descripcion ?? '';
+    List actividades = [];
+    List servicios = [];
+    List horarios = [];
+    if (item is PuntoTuristico && item.actividades != null) {
+      actividades = item.actividades.map((a) => a.nombre).toList();
+    }
+    if (item is LocalTuristico && item.servicios != null) {
+      servicios = item.servicios.map((s) => s.servicioNombre).toList();
+    }
+    if (item is LocalTuristico && item.horarios != null) {
+      horarios = item.horarios.map((h) => {
+        'diaSemana': h.diaSemana,
+        'horaInicio': h.horaInicio,
+        'horaFin': h.horaFin,
+      }).toList();
+    }
+
+    final resenaData = {
+      'idLugar': widget.lugarId,
+      'uid': widget.user.uid,
+      'nombreUsuario': widget.user.displayName ?? '',
+      'fotoUsuario': widget.user.photoURL ?? '',
+      'calificacion': _calificacion,
+      'comentario': comentario,
+      'nombreLugar': nombreLugar,
+      'ubicacion': ubicacion,
+      'descripcion': descripcion,
+      'actividades': actividades,
+      'servicios': servicios,
+      'horarios': horarios,
+      'timestamp': FieldValue.serverTimestamp(),
+    };
+
     if (_docId == null) {
-      final docRef = await widget.resenasRef.add({
-        'idLugar': widget.lugarId,
-        'uid': widget.user.uid,
-        'nombreUsuario': widget.user.displayName ?? '',
-        'fotoUsuario': widget.user.photoURL ?? '',
-        'calificacion': _calificacion,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
+      final docRef = await widget.resenasRef.add(resenaData);
       setState(() {
         _docId = docRef.id;
       });
     } else {
-      await widget.resenasRef.doc(_docId).update({
-        'calificacion': _calificacion,
-        'timestamp': FieldValue.serverTimestamp(),
-      });
+      await widget.resenasRef.doc(_docId).update(resenaData);
     }
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Calificación guardada')),
+      SnackBar(content: Text('Calificación y reseña guardadas')),
     );
   }
 

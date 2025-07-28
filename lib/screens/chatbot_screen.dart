@@ -679,10 +679,21 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  IconButton(
-                    icon: const Icon(Icons.send, color: Color(0xFF007BFF)),
-                    onPressed: _waitingBotReply ? null : () => _sendMessage(_controller.text),
-                  ),
+                  _waitingBotReply
+                      ? SizedBox(
+                          width: 40,
+                          height: 40,
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF007BFF)),
+                            ),
+                          ),
+                        )
+                      : IconButton(
+                          icon: const Icon(Icons.send, color: Color(0xFF007BFF)),
+                          onPressed: () => _sendMessage(_controller.text),
+                        ),
                 ],
               ),
             ),
