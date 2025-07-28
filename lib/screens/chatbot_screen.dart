@@ -681,7 +681,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                   const SizedBox(width: 8),
                   IconButton(
                     icon: const Icon(Icons.send, color: Color(0xFF007BFF)),
-                    onPressed: () => _sendMessage(_controller.text),
+                    onPressed: _waitingBotReply ? null : () => _sendMessage(_controller.text),
                   ),
                 ],
               ),
