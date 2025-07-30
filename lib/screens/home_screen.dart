@@ -30,6 +30,8 @@ class _HomeScreenState extends State<HomeScreen> {
   int _currentIndex = 0;
   final AuthService _authService = AuthService();
   final TextEditingController _searchController = TextEditingController();
+  // Debounce para búsqueda
+  DateTime? _lastSearch;
   late Future<List<dynamic>> _recomendadosFuture;
   List<dynamic> _resultadosBusqueda = [];
   bool _buscando = false;
@@ -86,20 +88,27 @@ class _HomeScreenState extends State<HomeScreen> {
     },
   ];
 
+  bool _imagenesPrecargadas = false;
+
   @override
   void initState() {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _recomendadosFuture = _cargarRecomendados().then((list) {
       _recomendadosEnMemoria = list;
-      // Precargar solo las imágenes de los primeros recomendados
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        for (int i = 0; i < _imagenesPrecarga.length && i < list.length; i++) {
-          precacheImage(AssetImage(_imagenesPrecarga[i]), context);
-        }
-      });
       return list;
     });
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_imagenesPrecargadas) {
+      for (final img in _imagenesPrecarga) {
+        precacheImage(AssetImage(img), context);
+      }
+      _imagenesPrecargadas = true;
+    }
   }
 
   @override
@@ -209,7 +218,12 @@ class _HomeScreenState extends State<HomeScreen> {
     return resultado;
   }
 
-  void _buscar(String query) {
+  void _buscar(String query) async {
+    // Debounce: solo busca si han pasado 250ms desde la última pulsación
+    final now = DateTime.now();
+    _lastSearch = now;
+    await Future.delayed(const Duration(milliseconds: 250));
+    if (_lastSearch != now) return;
     if (query.isEmpty) {
       setState(() {
         _buscando = false;
@@ -346,179 +360,204 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
         ],
       ),
-      body: _buscando
-          ? ListView.builder(
+      body: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
               padding: const EdgeInsets.all(16.0),
-              itemCount: _resultadosBusqueda.isEmpty
-                  ? 2
-                  : _resultadosBusqueda.length + 2,
-              itemBuilder: (context, index) {
-                if (index == 0) {
-                  return Text(
-                    'Resultados de búsqueda',
-                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: Theme.of(context).colorScheme.onBackground,
-                        ),
-                  );
-                } else if (index == 1 && _resultadosBusqueda.isEmpty) {
-                  return Padding(
-                    padding: const EdgeInsets.only(top: 16.0),
-                    child: Center(
-                      child: Text(
-                        'No se encontraron resultados',
-                        style: TextStyle(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onBackground
-                                .withOpacity(0.6)),
-                      ),
+              child: Container(
+                height: 48,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.1),
+                      spreadRadius: 1,
+                      blurRadius: 5,
+                      offset: const Offset(0, 3),
                     ),
-                  );
-                } else {
-                  final item = _resultadosBusqueda[index - 2];
-                  return Padding(
-                    padding: const EdgeInsets.only(bottom: 8.0),
-                    child: Card(
-                      color: Theme.of(context).colorScheme.surface,
-                      elevation: 2,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: ListTile(
-                        leading: ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.asset(
-                            _getImageUrl(item),
-                            width: 60,
-                            height: 60,
-                            fit: BoxFit.cover,
-                            cacheWidth: 120,
-                            cacheHeight: 120,
-                          ),
-                        ),
-                        title: Text(
-                          item.nombre,
-                          style: TextStyle(
-                              color: Theme.of(context).colorScheme.onSurface),
-                        ),
-                        subtitle: Text(
-                          item is PuntoTuristico
-                              ? 'Punto Turístico'
-                              : 'Local Turístico',
-                          style: TextStyle(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withOpacity(0.6)),
-                        ),
-                        onTap: () {
-                          String? detalleImagenUrl;
-                          String key = '';
-                          if (item is PuntoTuristico) {
-                            key = 'punto_${item.id}';
-                          } else if (item is LocalTuristico) {
-                            key = 'local_${item.id}';
-                          }
-                          if (imagenesRecomendados.containsKey(key)) {
-                            detalleImagenUrl = imagenesRecomendados[key];
-                          } else {
-                            detalleImagenUrl = item.imagenUrl;
-                          }
-                          Navigator.pushNamed(
-                            context,
-                            '/detalles',
-                            arguments: {
-                              'item': item,
-                              'imageUrl': detalleImagenUrl,
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  );
-                }
-              },
-            )
-          : SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface,
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurface
-                                .withOpacity(0.1),
-                            spreadRadius: 1,
-                            blurRadius: 5,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: TextField(
-                        controller: _searchController,
-                        style: TextStyle(
-                            color: Theme.of(context).colorScheme.onSurface),
-                        decoration: InputDecoration(
-                          hintText: 'Búsqueda',
-                          hintStyle: TextStyle(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onSurface
-                                .withOpacity(0.5),
-                            fontSize: 16,
-                          ),
-                          icon: Icon(Icons.search,
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withOpacity(0.7)),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.only(bottom: 10),
-                        ),
-                        onChanged: _buscar,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    _buildSectionHeader(
-                      'Recomendados',
-                      onPressed: () {
-                        _recomendadosFuture = _cargarRecomendados();
-                        Navigator.pushNamed(
-                          context,
-                          '/recomendados',
-                          arguments: null,
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    RecomendadosSection(
-                      recomendadosFuture: _recomendadosFuture,
-                      getImageUrl: _getImageUrl,
-                      imagenesRecomendados: imagenesRecomendados,
-                    ),
-                    const SizedBox(height: 24),
-                    _buildSectionHeader(
-                      'Categorías',
-                      onPressed: () {
-                        Navigator.pushNamed(context, '/categorias');
-                      },
-                    ),
-                    const SizedBox(height: 16),
-                    CategoriasSection(categorias: categorias),
                   ],
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: TextField(
+                  controller: _searchController,
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurface),
+                  decoration: InputDecoration(
+                    hintText: 'Búsqueda',
+                    hintStyle: TextStyle(
+                      color: Theme.of(context)
+                          .colorScheme
+                          .onSurface
+                          .withOpacity(0.5),
+                      fontSize: 16,
+                    ),
+                    icon: Icon(Icons.search,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withOpacity(0.7)),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.only(bottom: 10),
+                  ),
+                  onChanged: _buscar,
                 ),
               ),
             ),
+          ),
+          if (_buscando)
+            SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) {
+                  if (index == 0) {
+                    return const Padding(
+                      padding: EdgeInsets.only(left: 16, top: 8, bottom: 8),
+                      child: Text(
+                        'Resultados de búsqueda',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
+                      ),
+                    );
+                  } else if (index == 1 && _resultadosBusqueda.isEmpty) {
+                    return const Padding(
+                      padding: EdgeInsets.only(top: 16.0),
+                      child: Center(
+                        child: Text(
+                          'No se encontraron resultados',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ),
+                    );
+                  } else {
+                    final item = _resultadosBusqueda[index - 2];
+                    return Padding(
+                      padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8.0),
+                      child: Card(
+                        color: Theme.of(context).colorScheme.surface,
+                        elevation: 2,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: ListTile(
+                          leading: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.asset(
+                              _getImageUrl(item),
+                              width: 60,
+                              height: 60,
+                              fit: BoxFit.cover,
+                              cacheWidth: 120,
+                              cacheHeight: 120,
+                            ),
+                          ),
+                          title: Text(
+                            item.nombre,
+                            style: TextStyle(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface),
+                          ),
+                          subtitle: Text(
+                            item is PuntoTuristico
+                                ? 'Punto Turístico'
+                                : 'Local Turístico',
+                            style: TextStyle(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withOpacity(0.6)),
+                          ),
+                          onTap: () {
+                            String? detalleImagenUrl;
+                            String key = '';
+                            if (item is PuntoTuristico) {
+                              key = 'punto_${item.id}';
+                            } else if (item is LocalTuristico) {
+                              key = 'local_${item.id}';
+                            }
+                            if (imagenesRecomendados.containsKey(key)) {
+                              detalleImagenUrl = imagenesRecomendados[key];
+                            } else {
+                              detalleImagenUrl = item.imagenUrl;
+                            }
+                            Navigator.pushNamed(
+                              context,
+                              '/detalles',
+                              arguments: {
+                                'item': item,
+                                'imageUrl': detalleImagenUrl,
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    );
+                  }
+                },
+                childCount: _resultadosBusqueda.isEmpty
+                    ? 2
+                    : _resultadosBusqueda.length + 2,
+              ),
+            )
+          else ...[
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(left: 16, right: 16, top: 8),
+                child: _buildSectionHeader(
+                  'Recomendados',
+                  onPressed: () {
+                    _recomendadosFuture = _cargarRecomendados();
+                    Navigator.pushNamed(
+                      context,
+                      '/recomendados',
+                      arguments: null,
+                    );
+                  },
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: const SizedBox(height: 16),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(left: 16, right: 16),
+                child: RecomendadosSection(
+                  recomendadosFuture: _recomendadosFuture,
+                  getImageUrl: _getImageUrl,
+                  imagenesRecomendados: imagenesRecomendados,
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: const SizedBox(height: 24),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(left: 16, right: 16),
+                child: _buildSectionHeader(
+                  'Categorías',
+                  onPressed: () {
+                    Navigator.pushNamed(context, '/categorias');
+                  },
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: const SizedBox(height: 16),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(left: 16, right: 16),
+                child: CategoriasSection(categorias: categorias),
+              ),
+            ),
+          ],
+        ],
+      ),
       bottomNavigationBar: BottomNavigationBarTuristico(
         currentIndex: _currentIndex,
         onTabChange: _onTabChange,

@@ -321,7 +321,16 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                       String rating = hotel['rating'] ?? 'Sin calificar';
                       String descripcion = hotel['descripcion'] ?? '';
                       String fuente = hotel['fuente'] ?? 'Desconocida';
-                      return '🏨 **$nombre**\n'
+                      String ubicacion = hotel['direccion'] ?? '';
+                      String mapsQuery;
+                      if (ubicacion.toString().trim().isNotEmpty) {
+                        mapsQuery = ubicacion.toString();
+                      } else {
+                        mapsQuery = '$nombre, Santo Domingo de los Tsáchilas, Ecuador';
+                      }
+                      final query = Uri.encodeComponent(mapsQuery);
+                      String mapsUrl = '[Ver en Google Maps](https://www.google.com/maps/search/?api=1&query=$query)';
+                      return '🏨 **$nombre**\n$mapsUrl\n'
                           '   💰 $precio\n'
                           '   ⭐ $rating\n'
                           '   📍 $descripcion\n'
@@ -353,8 +362,21 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                   String servicioBuscado = botResponse['servicio_buscado'] ?? 'servicio';
                   List<dynamic> lugares = botResponse['lugares'] ?? [];
                   if (lugares.isNotEmpty) {
+                    String lugaresStr = lugares.map((l) {
+                      String nombreLugar = l is Map && l.containsKey('nombre') ? l['nombre'] : l.toString();
+                      String ubicacion = l is Map && l.containsKey('direccion') ? l['direccion'] : '';
+                      String mapsQuery;
+                      if (ubicacion.toString().trim().isNotEmpty) {
+                        mapsQuery = ubicacion.toString();
+                      } else {
+                        mapsQuery = '$nombreLugar, Santo Domingo de los Tsáchilas, Ecuador';
+                      }
+                      final query = Uri.encodeComponent(mapsQuery);
+                      String mapsUrl = '[Ver en Google Maps](https://www.google.com/maps/search/?api=1&query=$query)';
+                      return '🏞️ **$nombreLugar**\n$mapsUrl';
+                    }).join('\n');
                     return '¡Claro! Encontré lugares con **$servicioBuscado** en Santo Domingo de los Tsáchilas, como:\n\n'
-                        '${lugares.map((l) => '🏞️ **$l**').join('\n')}\n\n'
+                        '$lugaresStr\n\n'
                         '¿Te gustaría saber más sobre alguno de ellos o te ayudo a buscar más opciones?';
                   } else {
                     return botResponse['texto'] ?? 'No encontré lugares específicos con $servicioBuscado en mi base de datos local.';
@@ -363,8 +385,21 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                   String terminoRelacionado = botResponse['termino_relacionado'] ?? 'este tipo de lugar';
                   List<dynamic> lugares = botResponse['lugares'] ?? [];
                   if (lugares.isNotEmpty) {
+                    String lugaresStr = lugares.map((l) {
+                      String nombreLugar = l is Map && l.containsKey('nombre') ? l['nombre'] : l.toString();
+                      String ubicacion = l is Map && l.containsKey('direccion') ? l['direccion'] : '';
+                      String mapsQuery;
+                      if (ubicacion.toString().trim().isNotEmpty) {
+                        mapsQuery = ubicacion.toString();
+                      } else {
+                        mapsQuery = '$nombreLugar, Santo Domingo de los Tsáchilas, Ecuador';
+                      }
+                      final query = Uri.encodeComponent(mapsQuery);
+                      String mapsUrl = '[Ver en Google Maps](https://www.google.com/maps/search/?api=1&query=$query)';
+                      return '🏞️ **$nombreLugar**\n$mapsUrl';
+                    }).join('\n');
                     return '¡Excelente! Aquí tienes varios lugares relacionados con **$terminoRelacionado** en Santo Domingo de los Tsáchilas:\n\n'
-                        '${lugares.map((l) => '🏞️ **$l**').join('\n')}\n\n'
+                        '$lugaresStr\n\n'
                         '¿Cuál de ellos te interesa más?';
                   } else {
                     return botResponse['texto'] ?? 'No encontré lugares relacionados.';
@@ -506,79 +541,117 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                 itemCount: _messages.length,
                 itemBuilder: (context, index) {
                   final msg = _messages[index];
-                  // --- INICIO: Renderizado con múltiples botones de Google Maps ---
-                  List<Widget> mapButtons = [];
-                  if (!msg.isUser) {
-                    // Usar sets para evitar duplicados
-                    final Set<String> coordsSet = {};
-                    final Set<String> lugaresSet = {};
-                    // Buscar todas las coordenadas únicas en el mensaje
-                    final coordRegex = RegExp(r'(-?\d+\.\d+),\s*(-?\d+\.\d+)');
-                    final coordMatches = coordRegex.allMatches(msg.text);
-                    for (final match in coordMatches) {
-                      final lat = match.group(1);
-                      final lng = match.group(2);
-                      if (lat != null && lng != null) {
-                        final key = '$lat,$lng';
-                        if (!coordsSet.contains(key)) {
-                          coordsSet.add(key);
-                          mapButtons.add(
-                            IconButton(
-                              icon: Icon(Icons.map, color: Colors.blue),
-                              tooltip: 'Abrir en Google Maps',
+                  if (msg.isUser) {
+                    // Mensaje del usuario: igual que antes
+                    return Align(
+                      alignment: Alignment.centerRight,
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color.fromARGB(255, 148, 219, 252),
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 6,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: MarkdownBody(
+                          data: msg.text,
+                          styleSheet: MarkdownStyleSheet(
+                            p: const TextStyle(color: Colors.black87, fontSize: 16),
+                            strong: const TextStyle(color: Colors.black87, fontSize: 16, fontWeight: FontWeight.bold),
+                            h1: const TextStyle(color: Colors.black87, fontSize: 22, fontWeight: FontWeight.bold),
+                            h2: const TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.bold),
+                            listBullet: const TextStyle(color: Colors.black87, fontSize: 16),
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                  // Mensaje del bot: renderizado especial para botones de mapa por opción
+                  // Dividir el texto en bloques por doble salto de línea
+                  final bloques = msg.text.split(RegExp(r'\n\s*\n'));
+                  List<Widget> bloquesWidgets = [];
+                  for (final bloque in bloques) {
+                    // Buscar nombre del lugar (por ejemplo, **Nombre**)
+                    final nombreMatch = RegExp(r'\*\*(.*?)\*\*').firstMatch(bloque);
+                    String? nombreLugar = nombreMatch != null ? nombreMatch.group(1)?.trim() : null;
+                    // Buscar dirección (línea que contiene 'Dirección:' o 'Ubicación:')
+                    final direccionMatch = RegExp(r'(Dirección|Ubicación):?\s*(.*)', caseSensitive: false).firstMatch(bloque);
+                    String? direccion = direccionMatch != null ? direccionMatch.group(2)?.trim() : null;
+                    // Frases genéricas a evitar
+                    final frasesGenericas = [
+                      'Consulta su página para más detalles sobre la dirección y actividades.',
+                      'Santo Domingo, consulta su página para más detal',
+                      'Consulta su página para más detalles.',
+                      'No disponible',
+                      'Sin dirección',
+                      'No especificada',
+                      '',
+                    ];
+                    // Limpiar dirección de Markdown y espacios
+                    if (direccion != null) {
+                      direccion = direccion.replaceAll(RegExp(r'\*'), '').trim();
+                    }
+                    // Limpiar nombre de Markdown y espacios
+                    if (nombreLugar != null) {
+                      nombreLugar = nombreLugar.replaceAll(RegExp(r'\*'), '').trim();
+                    }
+                    // Determinar mapsQuery
+                    String mapsQuery = '';
+                    if (direccion != null &&
+                        direccion.isNotEmpty &&
+                        !frasesGenericas.any((f) => direccion!.toLowerCase().contains(f.toLowerCase()))) {
+                      mapsQuery = direccion;
+                    } else if (nombreLugar != null && nombreLugar.isNotEmpty) {
+                      mapsQuery = '$nombreLugar, Santo Domingo de los Tsáchilas, Ecuador';
+                    }
+                    // Widget del bloque (Markdown)
+                    bloquesWidgets.add(
+                      MarkdownBody(
+                        data: bloque,
+                        styleSheet: MarkdownStyleSheet(
+                          p: const TextStyle(color: Colors.black87, fontSize: 16),
+                          strong: const TextStyle(color: Colors.black87, fontSize: 16, fontWeight: FontWeight.bold),
+                          h1: const TextStyle(color: Colors.black87, fontSize: 22, fontWeight: FontWeight.bold),
+                          h2: const TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.bold),
+                          listBullet: const TextStyle(color: Colors.black87, fontSize: 16),
+                        ),
+                      ),
+                    );
+                    // Si hay query de mapa, poner botón justo después del bloque
+                    if (mapsQuery.isNotEmpty) {
+                      bloquesWidgets.add(
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4.0, bottom: 8.0),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: IconButton(
+                              icon: const Icon(Icons.map, color: Colors.blue),
+                              tooltip: 'Ver en Google Maps',
                               onPressed: () async {
-                                final url = 'https://www.google.com/maps/search/?api=1&query=$lat,$lng';
+                                final url = 'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(mapsQuery)}';
                                 if (await canLaunch(url)) {
                                   await launch(url);
                                 }
                               },
                             ),
-                          );
-                        }
-                      }
-                    }
-                    // Buscar todos los lugares únicos en formato **Nombre**
-                    final lugarRegex = RegExp(r'\*\*(.*?)\*\*');
-                    final lugarMatches = lugarRegex.allMatches(msg.text);
-                    // Palabras genéricas a ignorar
-                    final Set<String> palabrasIgnorar = {
-                      'Descripción', 'Ubicación', 'Actividades', 'Fuente', 'Precio', 'Reservar', 'Hotel', 'Texto', 'Servicios', 'Rating', 'Nombre', 'General', 'Sin calificar', 'Malecón del Río Toachi', 'Parque Zaracay', 'Comunidades Tsáchilas'
-                    };
-                    for (final match in lugarMatches) {
-                      final lugar = match.group(1)?.trim();
-                      if (lugar != null &&
-                          lugar.isNotEmpty &&
-                          !lugaresSet.contains(lugar) &&
-                          !palabrasIgnorar.contains(lugar)) {
-                        lugaresSet.add(lugar);
-                        mapButtons.add(
-                          IconButton(
-                            icon: Icon(Icons.map, color: Colors.blue),
-                            tooltip: 'Buscar en Google Maps',
-                            onPressed: () async {
-                              final query = Uri.encodeComponent('$lugar, Santo Domingo de los Tsáchilas');
-                              final url = 'https://www.google.com/maps/search/?api=1&query=$query';
-                              if (await canLaunch(url)) {
-                                await launch(url);
-                              }
-                            },
                           ),
-                        );
-                      }
+                        ),
+                      );
                     }
                   }
                   return Align(
-                    alignment: msg.isUser
-                        ? Alignment.centerRight
-                        : Alignment.centerLeft,
+                    alignment: Alignment.centerLeft,
                     child: Container(
-                      margin: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 8),
+                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: msg.isUser
-                            ? const Color.fromARGB(255, 148, 219, 252)
-                            : const Color(0xFFF8F9FA),
+                        color: const Color(0xFFF8F9FA),
                         borderRadius: BorderRadius.circular(24),
                         boxShadow: [
                           BoxShadow(
@@ -590,50 +663,10 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          MarkdownBody(
-                            data: msg.text,
-                            styleSheet: MarkdownStyleSheet(
-                              p: TextStyle(
-                                color: Colors.black87,
-                                fontSize: 16,
-                              ),
-                              strong: TextStyle(
-                                color: Colors.black87,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              h1: TextStyle(
-                                color: Colors.black87,
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              h2: TextStyle(
-                                color: Colors.black87,
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              listBullet: TextStyle(
-                                color: Colors.black87,
-                                fontSize: 16,
-                              ),
-                            ),
-                          ),
-                          if (mapButtons.isNotEmpty)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 8.0),
-                              child: SingleChildScrollView(
-                                scrollDirection: Axis.horizontal,
-                                child: Row(
-                                  children: mapButtons,
-                                ),
-                              ),
-                            ),
-                        ],
+                        children: bloquesWidgets,
                       ),
                     ),
                   );
-                  // --- FIN: Renderizado con múltiples botones de Google Maps ---
                 },
               ),
             ),
