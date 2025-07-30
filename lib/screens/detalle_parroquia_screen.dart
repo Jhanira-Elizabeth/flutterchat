@@ -90,6 +90,8 @@ class _DetallesParroquiaScreenState extends State<DetallesParroquiaScreen> with 
             child: Image.asset(
               imageUrl,
               fit: BoxFit.cover,
+              cacheWidth: 600,
+              cacheHeight: 250,
               errorBuilder: (context, error, stackTrace) {
                 return Container(
                   color: theme.colorScheme.surfaceVariant,
@@ -216,19 +218,28 @@ class _DetallesParroquiaScreenState extends State<DetallesParroquiaScreen> with 
                                 height: 250,
                                 child: ClipRRect(
                                   borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-                                  child: GoogleMap(
-                                    initialCameraPosition: CameraPosition(
-                                      target: coords,
-                                      zoom: 13,
-                                    ),
-                                    markers: {
-                                      Marker(
-                                        markerId: const MarkerId('parroquia'),
-                                        position: coords,
-                                        infoWindow: InfoWindow(title: parroquia.nombre),
-                                      ),
+                                  child: FutureBuilder(
+                                    future: Future.delayed(const Duration(milliseconds: 200)),
+                                    builder: (context, snap) {
+                                      if (snap.connectionState != ConnectionState.done) {
+                                        return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+                                      }
+                                      return GoogleMap(
+                                        initialCameraPosition: CameraPosition(
+                                          target: coords,
+                                          zoom: 13,
+                                        ),
+                                        markers: {
+                                          Marker(
+                                            markerId: const MarkerId('parroquia'),
+                                            position: coords,
+                                            infoWindow: InfoWindow(title: parroquia.nombre),
+                                          ),
+                                        },
+                                        zoomControlsEnabled: false,
+                                        liteModeEnabled: true, // Lite mode para mejor rendimiento
+                                      );
                                     },
-                                    zoomControlsEnabled: false,
                                   ),
                                 ),
                               );

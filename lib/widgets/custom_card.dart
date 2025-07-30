@@ -57,27 +57,23 @@ class _CustomCardState extends State<CustomCard>
   Future<void> _checkIsFavorite() async {
     // We need to safely access 'id' and other properties from the dynamic item
     // It's crucial that PuntoTuristico and LocalTuristico have an 'id' property.
-    int? itemId;
-    bool favoriteStatus = false;
-
+    // Example implementation (update as needed):
     if (widget.item is PuntoTuristico) {
-      final punto = widget.item as PuntoTuristico; // Cast for safe access
-      itemId = punto.id;
-      favoriteStatus = await _favoriteService.isPuntoTuristicoFavorite(itemId!);
+      final punto = widget.item as PuntoTuristico;
+      final isFav = await _favoriteService.isPuntoTuristicoFavorite(punto.id);
+      if (mounted) {
+        setState(() {
+          _isFavorite = isFav;
+        });
+      }
     } else if (widget.item is LocalTuristico) {
-      final local = widget.item as LocalTuristico; // Cast for safe access
-      itemId = local.id;
-      favoriteStatus = await _favoriteService.isLocalTuristicoFavorite(itemId!);
-    } else {
-      // If the item isn't a PuntoTuristico or LocalTuristico (e.g., a category),
-      // it cannot be favorited, so _isFavorite remains false.
-      favoriteStatus = false;
-    }
-
-    if (mounted) {
-      setState(() {
-        _isFavorite = favoriteStatus;
-      });
+      final local = widget.item as LocalTuristico;
+      final isFav = await _favoriteService.isLocalTuristicoFavorite(local.id);
+      if (mounted) {
+        setState(() {
+          _isFavorite = isFav;
+        });
+      }
     }
   }
 
@@ -234,3 +230,4 @@ class _CustomCardState extends State<CustomCard>
     );
   }
 }
+    

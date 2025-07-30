@@ -198,21 +198,30 @@ class _MapaScreenState extends State<MapaScreen> {
             // Restaurar el centro dinámico según los datos de la app
             return Stack(
               children: [
-                Container(
+                SizedBox(
                   height: MediaQuery.of(context).size.height,
-                  child: GoogleMap(
-                    onMapCreated: (GoogleMapController controller) {
-                      print("MapaScreen: Mapa creado exitosamente");
+                  child: FutureBuilder(
+                    future: Future.delayed(const Duration(milliseconds: 200)), // Delay para evitar freeze
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState != ConnectionState.done) {
+                        return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+                      }
+                      return GoogleMap(
+                        onMapCreated: (GoogleMapController controller) {
+                          print("MapaScreen: Mapa creado exitosamente");
+                        },
+                        initialCameraPosition: CameraPosition(
+                          target: LatLng(centerLat, centerLng),
+                          zoom: 12,
+                        ),
+                        markers: markers,
+                        myLocationEnabled: false,
+                        myLocationButtonEnabled: false,
+                        zoomControlsEnabled: true,
+                        mapToolbarEnabled: true,
+                        liteModeEnabled: true, // Lite mode para mejor rendimiento
+                      );
                     },
-                    initialCameraPosition: CameraPosition(
-                      target: LatLng(centerLat, centerLng),
-                      zoom: 12,
-                    ),
-                    markers: markers,
-                    myLocationEnabled: false,
-                    myLocationButtonEnabled: false,
-                    zoomControlsEnabled: true,
-                    mapToolbarEnabled: true,
                   ),
                 ),
                 Positioned(

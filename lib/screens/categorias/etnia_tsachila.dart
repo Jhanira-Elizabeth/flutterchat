@@ -24,7 +24,6 @@ class _EtniaTsachilaScreenState extends State<EtniaTsachilaScreen> {
   @override
   void initState() {
     super.initState();
-    // Cambia el 5 por el ID real de la etiqueta "Parques" si es diferente
     _etniaDataFuture = _apiService.fetchPuntosByEtiqueta(1);
     _etniaDataFuture = _apiService.fetchPuntosConEtiquetas().then(
     (puntos) => puntos.where(

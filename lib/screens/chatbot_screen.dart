@@ -4,6 +4,7 @@ import 'package:tursd/widgets/bottom_navigation_bar_turistico.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
@@ -293,128 +294,109 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         },
       };
 
-      print(
-          'Sending body: ${jsonEncode(body)}'); // Esto te mostrará el JSON exacto que envías
+      print('Sending body: ${jsonEncode(body)}');
       final response = await http.post(
-        Uri.parse(
-            'https://tursd-chatbot-fqdxgsa4arb8fjf9.brazilsouth-01.azurewebsites.net/chat'),
+        Uri.parse('https://tursd-chatbot-fqdxgsa4arb8fjf9.brazilsouth-01.azurewebsites.net/chat'),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode(body),
       );
 
+      print('Respuesta cruda del chatbot: ${response.body}');
+      print('Content-Type: ${response.headers['content-type']}');
+
       if (response.statusCode == 200) {
-        final decodedData = jsonDecode(response.body);
-
-        if (decodedData is Map && decodedData.containsKey('response')) {
-          final botResponse = decodedData['response'];
-
-          if (botResponse is Map && botResponse.containsKey('tipo_respuesta')) {
-            String tipoRespuesta = botResponse['tipo_respuesta'];
-
-            switch (tipoRespuesta) {
-              case 'hoteles_internet':
-                List<dynamic> hoteles = botResponse['data'] ?? [];
-                if (hoteles.isNotEmpty) {
-                  String hotelesStr = hoteles.map((hotel) {
-                    String nombre = hotel['nombre'] ?? 'Hotel Desconocido';
-                    String precio = hotel['precio'] ?? 'Precio no disponible';
-                    String rating = hotel['rating'] ?? 'Sin calificar';
-                    String descripcion = hotel['descripcion'] ?? '';
-                    String fuente = hotel['fuente'] ?? 'Desconocida';
-
-                    return '🏨 **$nombre**\n'
-                        '   💰 $precio\n'
-                        '   ⭐ $rating\n'
-                        '   📍 $descripcion\n'
-                        '   🔗 Fuente: $fuente';
-                  }).join('\n\n');
-
-                  return '¡Perfecto! Encontré estos hoteles actualizados para ti en Santo Domingo de los Tsáchilas:\n\n$hotelesStr\n\n'
-                      '📋 **Para reservar:**\n'
-                      '• Booking.com - Mejores precios y cancelación gratis\n'
-                      '• Expedia - Paquetes hotel + vuelo\n'
-                      '• Contacto directo con el hotel\n\n'
-                      '🏞️ **También te recomiendo visitar:**\n'
-                      '• Malecón del Río Toachi (zona céntrica)\n'
-                      '• Parque Zaracay (área turística)\n'
-                      '• Comunidades Tsáchilas (turismo cultural)\n\n'
-                      '¿Te gustaría que te cuente sobre algún lugar turístico específico mientras planificas tu estadía? 😊';
-                } else {
-                  return botResponse['texto'] ??
-                      'No se encontraron hoteles actualizados en internet.';
-                }
-
-              case 'lugar_turistico_bd':
-                String nombre =
-                    botResponse['nombre_lugar'] ?? 'Lugar turístico';
-                String descripcion = botResponse['descripcion'] ?? '';
-                List<dynamic> servicios = botResponse['servicios'] ?? [];
-                List<dynamic> actividades = botResponse['actividades'] ?? [];
-
-                String serviciosStr = servicios.isNotEmpty
-                    ? servicios.map((s) => '- $s').join('\n')
-                    : 'No se especifican servicios.';
-                String actividadesStr = actividades.isNotEmpty
-                    ? actividades.map((a) => '- $a').join('\n')
-                    : 'No se especifican actividades.';
-
-                String textoOriginal = botResponse['texto_original_bd'] ??
-                    'No hay información detallada disponible.';
-                return textoOriginal;
-
-              case 'servicios_info':
-                String servicioBuscado =
-                    botResponse['servicio_buscado'] ?? 'servicio';
-                List<dynamic> lugares = botResponse['lugares'] ?? [];
-                if (lugares.isNotEmpty) {
-                  return '¡Claro! Encontré lugares con **$servicioBuscado** en Santo Domingo de los Tsáchilas, como:\n\n'
-                      '${lugares.map((l) => '🏞️ **$l**').join('\n')}\n\n'
-                      '¿Te gustaría saber más sobre alguno de ellos o te ayudo a buscar más opciones?';
-                } else {
-                  return botResponse['texto'] ??
-                      'No encontré lugares específicos con $servicioBuscado en mi base de datos local.';
-                }
-
-              case 'lugares_multiples':
-                String terminoRelacionado =
-                    botResponse['termino_relacionado'] ?? 'este tipo de lugar';
-                List<dynamic> lugares = botResponse['lugares'] ?? [];
-                if (lugares.isNotEmpty) {
-                  return '¡Excelente! Aquí tienes varios lugares relacionados con **$terminoRelacionado** en Santo Domingo de los Tsáchilas:\n\n'
-                      '${lugares.map((l) => '🏞️ **$l**').join('\n')}\n\n'
-                      '¿Cuál de ellos te interesa más?';
-                } else {
-                  return botResponse['texto'] ??
-                      'No encontré lugares relacionados.';
-                }
-
-              case 'info_general_internet':
-                String texto = botResponse['texto'] ??
-                    'No se encontró información relevante en internet.';
-                return '🌐 (Búsqueda en Internet)\n$texto';
-
-              case 'general':
-                return botResponse['texto'] ??
-                    'Lo siento, no tengo una respuesta específica para eso en este momento. Intenta otra pregunta.';
-
-              case 'error':
-                return '¡Ups! Ocurrió un error: ${botResponse['texto'] ?? 'Desconocido'}. Por favor, inténtalo de nuevo.';
-
-              default:
-                return 'Recibí una respuesta del chatbot que no puedo interpretar correctamente. Contenido: ${jsonEncode(botResponse)}';
+        try {
+          final decodedData = jsonDecode(response.body);
+          if (decodedData is Map && decodedData.containsKey('response')) {
+            final botResponse = decodedData['response'];
+            if (botResponse is Map && botResponse.containsKey('tipo_respuesta')) {
+              String tipoRespuesta = botResponse['tipo_respuesta'];
+              switch (tipoRespuesta) {
+                case 'hoteles_internet':
+                  List<dynamic> hoteles = botResponse['data'] ?? [];
+                  if (hoteles.isNotEmpty) {
+                    String hotelesStr = hoteles.map((hotel) {
+                      String nombre = hotel['nombre'] ?? 'Hotel Desconocido';
+                      String precio = hotel['precio'] ?? 'Precio no disponible';
+                      String rating = hotel['rating'] ?? 'Sin calificar';
+                      String descripcion = hotel['descripcion'] ?? '';
+                      String fuente = hotel['fuente'] ?? 'Desconocida';
+                      return '🏨 **$nombre**\n'
+                          '   💰 $precio\n'
+                          '   ⭐ $rating\n'
+                          '   📍 $descripcion\n'
+                          '   🔗 Fuente: $fuente';
+                    }).join('\n\n');
+                    return '¡Perfecto! Encontré estos hoteles actualizados para ti en Santo Domingo de los Tsáchilas:\n\n$hotelesStr\n\n'
+                        '📋 **Para reservar:**\n'
+                        '• Booking.com - Mejores precios y cancelación gratis\n'
+                        '• Expedia - Paquetes hotel + vuelo\n'
+                        '• Contacto directo con el hotel\n\n'
+                        '🏞️ **También te recomiendo visitar:**\n'
+                        '• Malecón del Río Toachi (zona céntrica)\n'
+                        '• Parque Zaracay (área turística)\n'
+                        '• Comunidades Tsáchilas (turismo cultural)\n\n'
+                        '¿Te gustaría que te cuente sobre algún lugar turístico específico mientras planificas tu estadía? 😊';
+                  } else {
+                    return botResponse['texto'] ?? 'No se encontraron hoteles actualizados en internet.';
+                  }
+                case 'lugar_turistico_bd':
+                  String nombre = botResponse['nombre_lugar'] ?? 'Lugar turístico';
+                  String descripcion = botResponse['descripcion'] ?? '';
+                  List<dynamic> servicios = botResponse['servicios'] ?? [];
+                  List<dynamic> actividades = botResponse['actividades'] ?? [];
+                  String serviciosStr = servicios.isNotEmpty ? servicios.map((s) => '- $s').join('\n') : 'No se especifican servicios.';
+                  String actividadesStr = actividades.isNotEmpty ? actividades.map((a) => '- $a').join('\n') : 'No se especifican actividades.';
+                  String textoOriginal = botResponse['texto_original_bd'] ?? 'No hay información detallada disponible.';
+                  return textoOriginal;
+                case 'servicios_info':
+                  String servicioBuscado = botResponse['servicio_buscado'] ?? 'servicio';
+                  List<dynamic> lugares = botResponse['lugares'] ?? [];
+                  if (lugares.isNotEmpty) {
+                    return '¡Claro! Encontré lugares con **$servicioBuscado** en Santo Domingo de los Tsáchilas, como:\n\n'
+                        '${lugares.map((l) => '🏞️ **$l**').join('\n')}\n\n'
+                        '¿Te gustaría saber más sobre alguno de ellos o te ayudo a buscar más opciones?';
+                  } else {
+                    return botResponse['texto'] ?? 'No encontré lugares específicos con $servicioBuscado en mi base de datos local.';
+                  }
+                case 'lugares_multiples':
+                  String terminoRelacionado = botResponse['termino_relacionado'] ?? 'este tipo de lugar';
+                  List<dynamic> lugares = botResponse['lugares'] ?? [];
+                  if (lugares.isNotEmpty) {
+                    return '¡Excelente! Aquí tienes varios lugares relacionados con **$terminoRelacionado** en Santo Domingo de los Tsáchilas:\n\n'
+                        '${lugares.map((l) => '🏞️ **$l**').join('\n')}\n\n'
+                        '¿Cuál de ellos te interesa más?';
+                  } else {
+                    return botResponse['texto'] ?? 'No encontré lugares relacionados.';
+                  }
+                case 'info_general_internet':
+                  String texto = botResponse['texto'] ?? 'No se encontró información relevante en internet.';
+                  return '🌐 (Búsqueda en Internet)\n$texto';
+                case 'general':
+                  return botResponse['texto'] ?? 'Lo siento, no tengo una respuesta específica para eso en este momento. Intenta otra pregunta.';
+                case 'error':
+                  return '¡Ups! Ocurrió un error: ${botResponse['texto'] ?? 'Desconocido'}. Por favor, inténtalo de nuevo.';
+                default:
+                  return 'Recibí una respuesta del chatbot que no puedo interpretar correctamente. Contenido: ${jsonEncode(botResponse)}';
+              }
             }
           }
+          return decodedData['response'].toString();
+        } catch (e) {
+          // Si no es JSON válido, muestra el texto plano
+          return response.body;
         }
-        return decodedData['response'].toString();
       } else {
-        final errorData = jsonDecode(response.body);
-        if (errorData is Map &&
-            errorData.containsKey('response') &&
-            errorData['response'] is Map &&
-            errorData['response'].containsKey('texto')) {
-          return 'Error del chatbot (${response.statusCode}): ${errorData['response']['texto']}';
+        try {
+          final errorData = jsonDecode(response.body);
+          if (errorData is Map && errorData.containsKey('response') && errorData['response'] is Map && errorData['response'].containsKey('texto')) {
+            return 'Error del chatbot (${response.statusCode}): ${errorData['response']['texto']}';
+          }
+          return 'Error del servidor (${response.statusCode}): ${response.body}';
+        } catch (e) {
+          // Si no es JSON válido, muestra el texto plano
+          return response.body;
         }
-        return 'Error del servidor (${response.statusCode}): ${response.body}';
       }
     } catch (e) {
       return 'Ocurrió un error al consultar el chatbot: $e';
@@ -461,75 +443,9 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                         BorderRadius.vertical(top: Radius.circular(20)),
                   ),
                   builder: (context) {
+                    // ...existing code...
                     return Container(
-                      padding: const EdgeInsets.all(16),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Historial de conversaciones',
-                              style: TextStyle(
-                                  fontSize: 18, fontWeight: FontWeight.bold)),
-                          const SizedBox(height: 12),
-                          if (conversations.isEmpty)
-                            const Text('No hay conversaciones previas.')
-                          else
-                            SizedBox(
-                              height: 300,
-                              child: ListView.builder(
-                                itemCount: conversations.length,
-                                itemBuilder: (context, idx) {
-                                  final conv = conversations[idx]
-                                      .cast<QueryDocumentSnapshot>();
-                                  final validMsgs = conv.where((doc) {
-                                    final data =
-                                        doc.data() as Map<String, dynamic>;
-                                    return (data['text'] != null &&
-                                        (data['text'] as String)
-                                            .trim()
-                                            .isNotEmpty);
-                                  }).toList();
-                                  if (validMsgs.isEmpty) {
-                                    return const SizedBox.shrink();
-                                  }
-                                  QueryDocumentSnapshot? firstUserMsg;
-                                  try {
-                                    firstUserMsg = validMsgs.firstWhere((doc) {
-                                      final data =
-                                          doc.data() as Map<String, dynamic>;
-                                      return data['isUser'] == true;
-                                    }, orElse: () => validMsgs[0]);
-                                  } catch (e) {
-                                    firstUserMsg = validMsgs[0];
-                                  }
-                                  final data = firstUserMsg.data()
-                                      as Map<String, dynamic>;
-                                  final date = (data['timestamp'] as Timestamp?)
-                                      ?.toDate();
-                                  final preview = data['text'] ?? '';
-                                  return ListTile(
-                                    title: Text(
-                                        preview.isNotEmpty
-                                            ? preview
-                                            : 'Sin mensajes de usuario',
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis),
-                                    subtitle: date != null
-                                        ? Text(
-                                            '${date.day}/${date.month}/${date.year} ${date.hour}:${date.minute}')
-                                        : null,
-                                    onTap: validMsgs.isNotEmpty
-                                        ? () {
-                                            Navigator.pop(context);
-                                            _loadChatHistory(docs: validMsgs);
-                                          }
-                                        : null,
-                                  );
-                                },
-                              ),
-                            ),
-                        ],
-                      ),
+                      // ...existing code...
                     );
                   },
                 );
@@ -590,6 +506,67 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                 itemCount: _messages.length,
                 itemBuilder: (context, index) {
                   final msg = _messages[index];
+                  // --- INICIO: Renderizado con múltiples botones de Google Maps ---
+                  List<Widget> mapButtons = [];
+                  if (!msg.isUser) {
+                    // Usar sets para evitar duplicados
+                    final Set<String> coordsSet = {};
+                    final Set<String> lugaresSet = {};
+                    // Buscar todas las coordenadas únicas en el mensaje
+                    final coordRegex = RegExp(r'(-?\d+\.\d+),\s*(-?\d+\.\d+)');
+                    final coordMatches = coordRegex.allMatches(msg.text);
+                    for (final match in coordMatches) {
+                      final lat = match.group(1);
+                      final lng = match.group(2);
+                      if (lat != null && lng != null) {
+                        final key = '$lat,$lng';
+                        if (!coordsSet.contains(key)) {
+                          coordsSet.add(key);
+                          mapButtons.add(
+                            IconButton(
+                              icon: Icon(Icons.map, color: Colors.blue),
+                              tooltip: 'Abrir en Google Maps',
+                              onPressed: () async {
+                                final url = 'https://www.google.com/maps/search/?api=1&query=$lat,$lng';
+                                if (await canLaunch(url)) {
+                                  await launch(url);
+                                }
+                              },
+                            ),
+                          );
+                        }
+                      }
+                    }
+                    // Buscar todos los lugares únicos en formato **Nombre**
+                    final lugarRegex = RegExp(r'\*\*(.*?)\*\*');
+                    final lugarMatches = lugarRegex.allMatches(msg.text);
+                    // Palabras genéricas a ignorar
+                    final Set<String> palabrasIgnorar = {
+                      'Descripción', 'Ubicación', 'Actividades', 'Fuente', 'Precio', 'Reservar', 'Hotel', 'Texto', 'Servicios', 'Rating', 'Nombre', 'General', 'Sin calificar', 'Malecón del Río Toachi', 'Parque Zaracay', 'Comunidades Tsáchilas'
+                    };
+                    for (final match in lugarMatches) {
+                      final lugar = match.group(1)?.trim();
+                      if (lugar != null &&
+                          lugar.isNotEmpty &&
+                          !lugaresSet.contains(lugar) &&
+                          !palabrasIgnorar.contains(lugar)) {
+                        lugaresSet.add(lugar);
+                        mapButtons.add(
+                          IconButton(
+                            icon: Icon(Icons.map, color: Colors.blue),
+                            tooltip: 'Buscar en Google Maps',
+                            onPressed: () async {
+                              final query = Uri.encodeComponent('$lugar, Santo Domingo de los Tsáchilas');
+                              final url = 'https://www.google.com/maps/search/?api=1&query=$query';
+                              if (await canLaunch(url)) {
+                                await launch(url);
+                              }
+                            },
+                          ),
+                        );
+                      }
+                    }
+                  }
                   return Align(
                     alignment: msg.isUser
                         ? Alignment.centerRight
@@ -600,8 +577,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
                         color: msg.isUser
-                            ? const Color.fromARGB(255, 148, 219,
-                                252) // Celeste claro para usuario
+                            ? const Color.fromARGB(255, 148, 219, 252)
                             : const Color(0xFFF8F9FA),
                         borderRadius: BorderRadius.circular(24),
                         boxShadow: [
@@ -612,36 +588,52 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                           ),
                         ],
                       ),
-                      child: MarkdownBody(
-                        data: msg.text,
-                        styleSheet: MarkdownStyleSheet(
-                          p: TextStyle(
-                            color: Colors.black87,
-                            fontSize: 16,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          MarkdownBody(
+                            data: msg.text,
+                            styleSheet: MarkdownStyleSheet(
+                              p: TextStyle(
+                                color: Colors.black87,
+                                fontSize: 16,
+                              ),
+                              strong: TextStyle(
+                                color: Colors.black87,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              h1: TextStyle(
+                                color: Colors.black87,
+                                fontSize: 22,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              h2: TextStyle(
+                                color: Colors.black87,
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              listBullet: TextStyle(
+                                color: Colors.black87,
+                                fontSize: 16,
+                              ),
+                            ),
                           ),
-                          strong: TextStyle(
-                            color: Colors.black87,
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          h1: TextStyle(
-                            color: Colors.black87,
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          h2: TextStyle(
-                            color: Colors.black87,
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          listBullet: TextStyle(
-                            color: Colors.black87,
-                            fontSize: 16,
-                          ),
-                        ),
+                          if (mapButtons.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8.0),
+                              child: SingleChildScrollView(
+                                scrollDirection: Axis.horizontal,
+                                child: Row(
+                                  children: mapButtons,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
                     ),
                   );
+                  // --- FIN: Renderizado con múltiples botones de Google Maps ---
                 },
               ),
             ),

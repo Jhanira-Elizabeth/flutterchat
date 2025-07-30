@@ -200,6 +200,8 @@ class _DetallesScreenState extends State<DetallesScreen> with TickerProviderStat
                 Image.asset(
                   _imageUrl,
                   fit: BoxFit.cover,
+                  cacheWidth: 800,
+                  cacheHeight: 400,
                   errorBuilder: (context, error, stackTrace) {
                     return const SizedBox.shrink();
                   },
@@ -607,32 +609,40 @@ class _DetallesScreenState extends State<DetallesScreen> with TickerProviderStat
                                 children: [
                                   Text('Ubicación en el Mapa', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: textColor)),
                                   const SizedBox(height: 8),
-                                  if (_item?.latitud != null && _item?.longitud != null)
-                                    SizedBox(
-                                      height: 200,
-                                      width: double.infinity,
-                                      child: GoogleMap(
-                                        initialCameraPosition: CameraPosition(
-                                          target: LatLng(_item.latitud, _item.longitud),
-                                          zoom: 15,
-                                        ),
-                                        markers: {
-                                          Marker(
-                                            markerId: MarkerId(_item.id.toString()),
-                                            position: LatLng(_item.latitud, _item.longitud),
-                                            infoWindow: InfoWindow(title: nombre),
-                                            onTap: () {
-                                              _openMap(_item.latitud, _item.longitud);
-                                            },
-                                          ),
-                                        },
-                                        onTap: (LatLng latLng) {
-                                          _openMap(latLng.latitude, latLng.longitude);
+                          if (_item?.latitud != null && _item?.longitud != null)
+                            SizedBox(
+                              height: 200,
+                              width: double.infinity,
+                              child: FutureBuilder(
+                                future: Future.delayed(const Duration(milliseconds: 200)), // Pequeño delay para evitar freeze
+                                builder: (context, snapshot) {
+                                  if (snapshot.connectionState != ConnectionState.done) {
+                                    return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+                                  }
+                                  return GoogleMap(
+                                    initialCameraPosition: CameraPosition(
+                                      target: LatLng(_item.latitud, _item.longitud),
+                                      zoom: 15,
+                                    ),
+                                    markers: {
+                                      Marker(
+                                        markerId: MarkerId(_item.id.toString()),
+                                        position: LatLng(_item.latitud, _item.longitud),
+                                        infoWindow: InfoWindow(title: nombre),
+                                        onTap: () {
+                                          _openMap(_item.latitud, _item.longitud);
                                         },
                                       ),
-                                    )
-                                  else
-                                    Text('Ubicación no disponible.', style: TextStyle(color: textColor)),
+                                    },
+                                    myLocationButtonEnabled: false,
+                                    zoomControlsEnabled: false,
+                                    liteModeEnabled: true, // Lite mode para mejor rendimiento
+                                  );
+                                },
+                              ),
+                            )
+                          else
+                            Text('Ubicación no disponible.', style: TextStyle(color: textColor)),
                                   if (_item?.latitud != null && _item?.longitud != null)
                                     ElevatedButton(
                                       onPressed: () {

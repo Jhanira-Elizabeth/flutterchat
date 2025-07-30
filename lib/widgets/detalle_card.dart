@@ -51,6 +51,8 @@ class _DetalleCardState extends State<DetalleCard> with SingleTickerProviderStat
               ? Image.asset(
                   punto.imagenUrl!,
                   fit: BoxFit.cover,
+                  cacheWidth: 400,
+                  cacheHeight: 150,
                   errorBuilder: (context, error, stackTrace) => Container(
                     color: Colors.grey.shade400,
                     child: Center(child: Icon(Icons.image, size: 30, color: Colors.white)),
@@ -138,18 +140,27 @@ class _DetalleCardState extends State<DetalleCard> with SingleTickerProviderStat
                       Container(
                         padding: EdgeInsets.only(top: 16.0),
                         child: SizedBox(
-                          height: 200, // Puedes mantener una altura inicial o dejar que se ajuste
-                          child: GoogleMap(
-                            initialCameraPosition: CameraPosition(
-                              target: LatLng(punto.latitud, punto.longitud),
-                              zoom: 14.0,
-                            ),
-                            markers: {
-                              Marker(
-                                markerId: MarkerId(punto.id.toString()),
-                                position: LatLng(punto.latitud, punto.longitud),
-                                infoWindow: InfoWindow(title: punto.nombre),
-                              ),
+                          height: 200,
+                          child: FutureBuilder(
+                            future: Future.delayed(const Duration(milliseconds: 200)),
+                            builder: (context, snapshot) {
+                              if (snapshot.connectionState != ConnectionState.done) {
+                                return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+                              }
+                              return GoogleMap(
+                                initialCameraPosition: CameraPosition(
+                                  target: LatLng(punto.latitud, punto.longitud),
+                                  zoom: 14.0,
+                                ),
+                                markers: {
+                                  Marker(
+                                    markerId: MarkerId(punto.id.toString()),
+                                    position: LatLng(punto.latitud, punto.longitud),
+                                    infoWindow: InfoWindow(title: punto.nombre),
+                                  ),
+                                },
+                                liteModeEnabled: true,
+                              );
                             },
                           ),
                         ),

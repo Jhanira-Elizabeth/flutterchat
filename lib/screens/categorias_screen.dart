@@ -32,7 +32,8 @@ class _CategoriasScreenState extends State<CategoriasScreen> {
     } else if (currentRoute == '/chatbot') {
       _currentIndex = 3;
     } else if (currentRoute == '/categorias') {
-      _currentIndex = 0; // Si esta pantalla no es una pestaña principal, puede apuntar a 'Home'
+      _currentIndex =
+          0; // Si esta pantalla no es una pestaña principal, puede apuntar a 'Home'
     }
   }
 
@@ -42,7 +43,9 @@ class _CategoriasScreenState extends State<CategoriasScreen> {
     final cached = await CacheService.getData(boxName, cacheKey);
     if (cached != null) {
       setState(() {
-        categorias = List<Map<String, dynamic>>.from(cached);
+        categorias = (cached as List)
+            .map((e) => Map<String, dynamic>.from(e as Map))
+            .toList();
       });
     } else {
       final defaultCategorias = [
@@ -81,6 +84,11 @@ class _CategoriasScreenState extends State<CategoriasScreen> {
           'imagen': 'assets/images/SanGabriel1.jpg',
           'route': '/rios',
         },
+        {
+          'nombre': 'Balneario',
+          'imagen': 'assets/images/BalnearioEspanoles1.jpg',
+          'route': '/balneario',
+        },
       ];
       await CacheService.saveData(boxName, cacheKey, defaultCategorias);
       setState(() {
@@ -112,22 +120,29 @@ class _CategoriasScreenState extends State<CategoriasScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final themeProvider = Provider.of<ThemeProvider>(context); // Accede al ThemeProvider
+    final themeProvider =
+        Provider.of<ThemeProvider>(context); // Accede al ThemeProvider
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.background, // Usa el color de fondo del tema
+      backgroundColor:
+          theme.colorScheme.background, // Usa el color de fondo del tema
       appBar: AppBar(
         title: Text(
           'Categorías',
-          style: theme.appBarTheme.titleTextStyle, // Usa el estilo de texto del AppBar del tema
+          style: theme.appBarTheme
+              .titleTextStyle, // Usa el estilo de texto del AppBar del tema
         ),
-        backgroundColor: theme.appBarTheme.backgroundColor, // Usa el color de fondo del AppBar del tema
-        foregroundColor: theme.appBarTheme.foregroundColor, // Usa el color de primer plano del AppBar del tema
-        elevation: theme.appBarTheme.elevation, // Usa la elevación del AppBar del tema
+        backgroundColor: theme.appBarTheme
+            .backgroundColor, // Usa el color de fondo del AppBar del tema
+        foregroundColor: theme.appBarTheme
+            .foregroundColor, // Usa el color de primer plano del AppBar del tema
+        elevation:
+            theme.appBarTheme.elevation, // Usa la elevación del AppBar del tema
         leading: IconButton(
           icon: Icon(
             Icons.arrow_back,
-            color: theme.appBarTheme.iconTheme?.color, // Usa el color de icono del AppBar del tema
+            color: theme.appBarTheme.iconTheme
+                ?.color, // Usa el color de icono del AppBar del tema
           ),
           onPressed: () => Navigator.pop(context),
         ),
@@ -135,8 +150,11 @@ class _CategoriasScreenState extends State<CategoriasScreen> {
           // Botón para cambiar el tema
           IconButton(
             icon: Icon(
-              themeProvider.themeMode == ThemeMode.dark ? Icons.wb_sunny : Icons.nightlight_round,
-              color: theme.appBarTheme.iconTheme?.color, // Usa el color de icono del AppBar del tema
+              themeProvider.themeMode == ThemeMode.dark
+                  ? Icons.wb_sunny
+                  : Icons.nightlight_round,
+              color: theme.appBarTheme.iconTheme
+                  ?.color, // Usa el color de icono del AppBar del tema
             ),
             onPressed: () {
               themeProvider.toggleTheme();
