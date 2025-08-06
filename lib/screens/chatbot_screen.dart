@@ -27,8 +27,10 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _startChat();
-  }
+  } 
 
+  //Sistema de envío de mensajes al bot
+  //Acceso a la API del bot en Azure
   Future<Map<String, dynamic>> _sendToBot(Map<String, dynamic> body) async {
     final url = Uri.parse('https://tursd-asistente-menu-ehg2aqcag2djbcgk.canadacentral-01.azurewebsites.net/chat');
     final response = await http.post(
