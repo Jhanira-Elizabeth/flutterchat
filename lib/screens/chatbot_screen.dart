@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 
 class ChatbotScreen extends StatefulWidget {
   const ChatbotScreen({super.key});
@@ -14,10 +16,16 @@ class ChatbotScreen extends StatefulWidget {
 
 class _ChatbotScreenState extends State<ChatbotScreen> {
   String? _ultimoLugarSeleccionado;
+  String? _fechaViaje;
+  String? _horaSalida;
+  Position? _ubicacionActual;
+  
   final List<_Message> _messages = [];
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   bool _waitingBotReply = false;
+  bool _esperandoFecha = false;
+  bool _esperandoHora = false;
   List<String> _menuOptions = [];
   List<String> _lastMenuOptions = [];
   String? _chatId;
@@ -26,13 +34,56 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   void initState() {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    _obtenerUbicacionActual();
     _startChat();
-  } 
+  }
+
+  // Obtener ubicación actual del usuario
+  Future<void> _obtenerUbicacionActual() async {
+    try {
+      // Verificar permisos
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          print('[DEBUG] Permisos de ubicación denegados');
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        print('[DEBUG] Permisos de ubicación denegados permanentemente');
+        return;
+      }
+
+      // Obtener ubicación actual
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      
+      setState(() {
+        _ubicacionActual = position;
+      });
+      
+      print('[DEBUG] Ubicación obtenida: ${position.latitude}, ${position.longitude}');
+    } catch (e) {
+      print('[ERROR] Error al obtener ubicación: $e');
+    }
+  }
 
   //Sistema de envío de mensajes al bot
   //Acceso a la API del bot en Azure
   Future<Map<String, dynamic>> _sendToBot(Map<String, dynamic> body) async {
     final url = Uri.parse('https://tursd-asistente-menu-ehg2aqcag2djbcgk.canadacentral-01.azurewebsites.net/chat');
+    
+    // Agregar ubicación actual si está disponible
+    if (_ubicacionActual != null) {
+      body['ubicacion_actual'] = {
+        'latitud': _ubicacionActual!.latitude,
+        'longitud': _ubicacionActual!.longitude,
+      };
+    }
+    
     final response = await http.post(
       url,
       headers: {'Content-Type': 'application/json'},
@@ -55,6 +106,10 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       _lastMenuOptions.clear();
       _waitingBotReply = true;
       _ultimoLugarSeleccionado = null;
+      _fechaViaje = null;
+      _horaSalida = null;
+      _esperandoFecha = false;
+      _esperandoHora = false;
     });
     final response = await _sendToBot({});
     _handleBotResponse(response);
@@ -64,10 +119,29 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     setState(() {
       _waitingBotReply = false;
       
-      // Guardar el lugar seleccionado si viene en la respuesta
+      // Manejar estados de espera
+      _esperandoFecha = data['esperando_fecha'] == true;
+      _esperandoHora = data['esperando_hora'] == true;
+      
+      // Guardar información del agendamiento
       if (data.containsKey('lugar_seleccionado')) {
         _ultimoLugarSeleccionado = data['lugar_seleccionado'];
         print('[DEBUG] Lugar seleccionado guardado: $_ultimoLugarSeleccionado');
+      }
+      
+      if (data.containsKey('fecha_viaje')) {
+        _fechaViaje = data['fecha_viaje'];
+        print('[DEBUG] Fecha de viaje guardada: $_fechaViaje');
+      }
+      
+      if (data.containsKey('hora_salida')) {
+        _horaSalida = data['hora_salida'];
+        print('[DEBUG] Hora de salida guardada: $_horaSalida');
+      }
+      
+      // Manejar generación de ruta
+      if (data.containsKey('generar_ruta') && data['generar_ruta'] == true) {
+        _generarRutaGoogleMaps(data['destino']);
       }
       
       // 1. Si hay menú en la respuesta, lo usamos y lo guardamos como último menú
@@ -133,8 +207,6 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   void _showLocationMessage(Map<String, dynamic> ubicacion) {
     final nombre = ubicacion['nombre']?.toString() ?? '';
     final direccion = ubicacion['direccion']?.toString() ?? '';
-    final latitud = ubicacion['latitud'];
-    final longitud = ubicacion['longitud'];
 
     String locationText = '';
     if (nombre.isNotEmpty) {
@@ -150,6 +222,48 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       isUser: false,
       ubicacion: ubicacion,
     ));
+  }
+
+  Future<void> _generarRutaGoogleMaps(Map<String, dynamic> destino) async {
+    if (_ubicacionActual == null) {
+      _mostrarSnackBar('No se pudo obtener tu ubicación actual');
+      return;
+    }
+
+    try {
+      final lat = _ubicacionActual!.latitude;
+      final lng = _ubicacionActual!.longitude;
+      final destinoNombre = destino['nombre']?.toString() ?? '';
+      final destinoDireccion = destino['direccion']?.toString() ?? destinoNombre;
+      
+      // URL para navegación con Google Maps desde ubicación actual
+      final uri = Uri.parse(
+        'https://www.google.com/maps/dir/?api=1&origin=$lat,$lng&destination=${Uri.encodeComponent(destinoDireccion)}&travelmode=driving'
+      );
+      
+      print('[DEBUG] Generando ruta desde ($lat, $lng) hacia: $destinoDireccion');
+      
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+        _mostrarSnackBar('Abriendo navegación en Google Maps...');
+      } else {
+        _mostrarSnackBar('No se pudo abrir Google Maps');
+      }
+    } catch (e) {
+      print('[ERROR] Error al generar ruta: $e');
+      _mostrarSnackBar('Error al generar la ruta');
+    }
+  }
+
+  void _mostrarSnackBar(String mensaje) {
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(mensaje),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   Future<void> _openGoogleMaps(String direccion) async {
@@ -175,11 +289,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No se pudo abrir Google Maps')),
-        );
-      }
+      _mostrarSnackBar('No se pudo abrir Google Maps');
     }
   }
 
@@ -194,6 +304,24 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     _scrollToBottom();
     
     Map<String, dynamic> body = {'seleccion': text};
+    
+    // Agregar contexto de agendamiento si estamos en proceso
+    if (_esperandoFecha) {
+      body['esperando_fecha'] = true;
+      if (_ultimoLugarSeleccionado != null) {
+        body['lugar_seleccionado'] = _ultimoLugarSeleccionado;
+      }
+    }
+    
+    if (_esperandoHora) {
+      body['esperando_hora'] = true;
+      if (_ultimoLugarSeleccionado != null) {
+        body['lugar_seleccionado'] = _ultimoLugarSeleccionado;
+      }
+      if (_fechaViaje != null) {
+        body['fecha_viaje'] = _fechaViaje;
+      }
+    }
     
     // Si el usuario pulsa 'Ver ubicación', enviar también el último lugar seleccionado
     if (text == 'Ver ubicación' && _ultimoLugarSeleccionado != null) {
@@ -217,6 +345,184 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     });
   }
 
+  Widget _buildInputField() {
+    // Si estamos esperando fecha o hora, mostrar un campo especializado
+    if (_esperandoFecha) {
+      return _buildDateInputField();
+    } else if (_esperandoHora) {
+      return _buildTimeInputField();
+    } else {
+      return _buildNormalInputField();
+    }
+  }
+
+  Widget _buildDateInputField() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        border: Border(top: BorderSide(color: Colors.orange.shade200)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.calendar_today, color: Colors.orange.shade700, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Ingresa la fecha de tu visita',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.orange.shade700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _controller,
+                  decoration: InputDecoration(
+                    hintText: 'DD/MM/YYYY (ej: 25/12/2024)',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                    prefixIcon: const Icon(Icons.date_range),
+                  ),
+                  keyboardType: TextInputType.datetime,
+                  enabled: !_waitingBotReply,
+                ),
+              ),
+              const SizedBox(width: 8),
+              FloatingActionButton(
+                mini: true,
+                onPressed: _waitingBotReply ? null : () => _sendUserMessage(_controller.text),
+                backgroundColor: Colors.orange,
+                child: _waitingBotReply
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.send, color: Colors.white),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTimeInputField() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.blue.shade50,
+        border: Border(top: BorderSide(color: Colors.blue.shade200)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.access_time, color: Colors.blue.shade700, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                'Hora de salida',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.blue.shade700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _controller,
+                  decoration: InputDecoration(
+                    hintText: 'HH:MM (ej: 09:30)',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(25),
+                    ),
+                    prefixIcon: const Icon(Icons.schedule),
+                  ),
+                  keyboardType: TextInputType.datetime,
+                  enabled: !_waitingBotReply,
+                ),
+              ),
+              const SizedBox(width: 8),
+              FloatingActionButton(
+                mini: true,
+                onPressed: _waitingBotReply ? null : () => _sendUserMessage(_controller.text),
+                backgroundColor: Colors.blue,
+                child: _waitingBotReply
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.send, color: Colors.white),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNormalInputField() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _controller,
+              decoration: InputDecoration(
+                hintText: 'Escribe tu mensaje...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(25),
+                ),
+              ),
+              enabled: !_waitingBotReply,
+              onSubmitted: _waitingBotReply ? null : _sendUserMessage,
+            ),
+          ),
+          const SizedBox(width: 8),
+          FloatingActionButton(
+            mini: true,
+            onPressed: _waitingBotReply ? null : () => _sendUserMessage(_controller.text),
+            backgroundColor: const Color(0xFF007BFF),
+            child: _waitingBotReply
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.send, color: Colors.white),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -231,6 +537,21 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         title: const Text('ChatBot Turístico'),
         backgroundColor: const Color(0xFF007BFF),
         actions: [
+          // Mostrar indicador de ubicación
+          if (_ubicacionActual != null)
+            IconButton(
+              icon: const Icon(Icons.location_on, color: Colors.green),
+              tooltip: 'Ubicación obtenida',
+              onPressed: () {
+                _mostrarSnackBar('Ubicación actual: ${_ubicacionActual!.latitude.toStringAsFixed(6)}, ${_ubicacionActual!.longitude.toStringAsFixed(6)}');
+              },
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.location_off, color: Colors.red),
+              tooltip: 'Obtener ubicación',
+              onPressed: _obtenerUbicacionActual,
+            ),
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Reiniciar conversación',
@@ -240,6 +561,41 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       ),
       body: Column(
         children: [
+          // Mostrar información de agendamiento activo si existe
+          if (_ultimoLugarSeleccionado != null && (_fechaViaje != null || _horaSalida != null))
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              margin: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.green.shade50,
+                border: Border.all(color: Colors.green.shade200),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.event_available, color: Colors.green.shade700, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Agendamiento en proceso',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green.shade700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text('Lugar: $_ultimoLugarSeleccionado'),
+                  if (_fechaViaje != null) Text('Fecha: $_fechaViaje'),
+                  if (_horaSalida != null) Text('Hora de salida: $_horaSalida'),
+                ],
+              ),
+            ),
+          
           Expanded(
             child: ListView.builder(
               controller: _scrollController,
@@ -260,8 +616,29 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                         spacing: 8,
                         runSpacing: 8,
                         children: _menuOptions.map((option) {
+                          // Dar colores especiales a ciertos botones
+                          Color buttonColor = Colors.blue;
+                          Color textColor = Colors.white;
+                          
+                          if (option == "Agendar visita") {
+                            buttonColor = Colors.orange;
+                          } else if (option == "Sí, generar ruta" || option == "Si, generar ruta") {
+                            buttonColor = Colors.green;
+                          } else if (option == "Cancelar agendamiento") {
+                            buttonColor = Colors.red;
+                          } else if (option == "Ver ubicación") {
+                            buttonColor = Colors.purple;
+                          }
+                          
                           return ElevatedButton(
                             onPressed: _waitingBotReply ? null : () => _sendUserMessage(option),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: buttonColor,
+                              foregroundColor: textColor,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                            ),
                             child: Text(option),
                           );
                         }).toList(),
@@ -332,6 +709,9 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
               },
             ),
           ),
+          
+          // Campo de entrada adaptativo
+          _buildInputField(),
         ],
       ),
     );

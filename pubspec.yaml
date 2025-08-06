@@ -67,6 +67,7 @@ dependencies:
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   google_api_availability: ^5.0.0
+  permission_handler: ^11.1.0
 
 flutter:
   uses-material-design: true
