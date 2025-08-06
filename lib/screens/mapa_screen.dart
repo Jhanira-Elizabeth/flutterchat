@@ -1,11 +1,11 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:provider/provider.dart'; // Importa Provider
+import 'package:provider/provider.dart';
 import '../models/punto_turistico.dart';
 import '../services/api_service.dart';
-import '../widgets/bottom_navigation_bar_turistico.dart'; // Importa el widget de la barra de navegación
-import '../providers/theme_provider.dart'; // Importa tu ThemeProvider
+import '../widgets/bottom_navigation_bar_turistico.dart';
+import '../providers/theme_provider.dart';
 import '../services/cache_service.dart';
 
 class MapaScreen extends StatefulWidget {
@@ -15,15 +15,25 @@ class MapaScreen extends StatefulWidget {
   State<MapaScreen> createState() => _MapaScreenState();
 }
 
-class _MapaScreenState extends State<MapaScreen> {
+class _MapaScreenState extends State<MapaScreen> with AutomaticKeepAliveClientMixin {
   final ApiService _apiService = ApiService();
   late Future<List<PuntoTuristico>> _puntosFuture;
-  int _currentIndex = 1; // Inicialmente en el índice 1 (Mapa)
+  int _currentIndex = 1;
+  
+  // Variables para optimización
+  GoogleMapController? _mapController;
+  Set<Marker> _markers = {};
+  List<PuntoTuristico> _puntos = [];
+  bool _isMapReady = false;
+  CameraPosition? _initialCameraPosition;
+
+  // Cache para evitar reconstrucciones innecesarias
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
-    // Oculta las barras de sistema para pantalla completa (gestos para mostrar navegación)
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _puntosFuture = _fetchPuntosConCache();
     print("MapaScreen: initState - Cargando puntos turísticos...");
@@ -32,18 +42,18 @@ class _MapaScreenState extends State<MapaScreen> {
   Future<List<PuntoTuristico>> _fetchPuntosConCache() async {
     try {
       final puntos = await _apiService.fetchPuntosTuristicos();
-      // Guardar en caché
-      for (var punto in puntos) {
-        try {
-          await CacheService.saveData('mapaCache', 'punto_${punto.id}', punto.toMap());
-        } catch (e) {
-          print('Error al guardar punto en caché: $e');
-        }
-      }
+      
+      // Preparar datos una sola vez
+      await _prepareMapData(puntos);
+      
+      // Guardar en caché en background
+      _saveToCache(puntos);
+      
       return puntos;
     } catch (e) {
       print('Error al obtener puntos de la API: $e');
-      // Intentar leer del caché usando getAllData
+      
+      // Intentar leer del caché
       List<PuntoTuristico> puntosCache = [];
       try {
         final allData = await CacheService.getAllData('mapaCache');
@@ -53,14 +63,99 @@ class _MapaScreenState extends State<MapaScreen> {
           }
         }
         print('Recuperados ${puntosCache.length} puntos del caché');
+        
+        if (puntosCache.isNotEmpty) {
+          await _prepareMapData(puntosCache);
+        }
       } catch (e) {
         print('Error al leer puntos del caché: $e');
       }
+      
       return puntosCache;
     }
   }
 
+  // Preparar todos los datos del mapa de una vez
+  Future<void> _prepareMapData(List<PuntoTuristico> puntos) async {
+    _puntos = puntos;
+    
+    if (puntos.isEmpty) return;
+
+    // Calcular centro una sola vez
+    double sumLat = 0;
+    double sumLng = 0;
+    
+    for (var punto in puntos) {
+      sumLat += punto.latitud;
+      sumLng += punto.longitud;
+    }
+    
+    final centerLat = sumLat / puntos.length;
+    final centerLng = sumLng / puntos.length;
+    
+    _initialCameraPosition = CameraPosition(
+      target: LatLng(centerLat, centerLng),
+      zoom: 12,
+    );
+
+    // Crear marcadores una sola vez
+    _createMarkers(puntos);
+    
+    print("MapaScreen: Datos preparados - ${puntos.length} puntos, ${_markers.length} marcadores");
+  }
+
+  void _createMarkers(List<PuntoTuristico> puntos) {
+    final Set<Marker> newMarkers = {};
+    
+    for (var punto in puntos) {
+      newMarkers.add(
+        Marker(
+          markerId: MarkerId(punto.id.toString()),
+          position: LatLng(punto.latitud, punto.longitud),
+          infoWindow: InfoWindow(
+            title: punto.nombre,
+            snippet: punto.descripcion.length > 50
+                ? '${punto.descripcion.substring(0, 47)}...'
+                : punto.descripcion,
+            onTap: () {
+              Navigator.pushNamed(
+                context,
+                '/detalles',
+                arguments: punto,
+              );
+            },
+          ),
+        ),
+      );
+    }
+    
+    _markers = newMarkers;
+  }
+
+  // Guardar en caché en background
+  void _saveToCache(List<PuntoTuristico> puntos) {
+    Future.microtask(() async {
+      for (var punto in puntos) {
+        try {
+          await CacheService.saveData('mapaCache', 'punto_${punto.id}', punto.toMap());
+        } catch (e) {
+          print('Error al guardar punto en caché: $e');
+        }
+      }
+    });
+  }
+
+  void _onMapCreated(GoogleMapController controller) {
+    _mapController = controller;
+    setState(() {
+      _isMapReady = true;
+    });
+    print("MapaScreen: Mapa creado exitosamente");
+  }
+
   void _onTabChange(int index) {
+    if (_currentIndex == index) return; // Evitar navegación innecesaria
+    
     setState(() {
       _currentIndex = index;
       switch (index) {
@@ -70,7 +165,7 @@ class _MapaScreenState extends State<MapaScreen> {
         case 1:
           Navigator.pushReplacementNamed(context, '/mapa');
           break;
-        case 2: // Favoritos
+        case 2:
           Navigator.pushReplacementNamed(context, '/favoritos');
           break;
         case 3:
@@ -82,29 +177,30 @@ class _MapaScreenState extends State<MapaScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context); // Obtén el tema actual
-    final themeProvider = Provider.of<ThemeProvider>(context); // Para acceder al toggleTheme
+    super.build(context); // Importante para AutomaticKeepAliveClientMixin
+    
+    final theme = Theme.of(context);
+    final themeProvider = Provider.of<ThemeProvider>(context);
 
     return Scaffold(
-      backgroundColor: theme.colorScheme.background, // Usa el color de fondo del tema
+      backgroundColor: theme.colorScheme.background,
       appBar: AppBar(
         title: Text(
           'Mapa Turístico',
-          style: theme.appBarTheme.titleTextStyle, // Usa el estilo de texto del AppBarTheme
+          style: theme.appBarTheme.titleTextStyle,
         ),
-        backgroundColor: theme.appBarTheme.backgroundColor, // Usa el color de fondo del AppBarTheme
-        foregroundColor: theme.appBarTheme.foregroundColor, // Color de los iconos/texto del AppBarTheme
-        elevation: theme.appBarTheme.elevation, // O un valor que prefieras para la elevación
+        backgroundColor: theme.appBarTheme.backgroundColor,
+        foregroundColor: theme.appBarTheme.foregroundColor,
+        elevation: theme.appBarTheme.elevation,
         actions: [
-          // Botón para cambiar el tema (opcional, pero útil para pruebas)
           IconButton(
             icon: Icon(
-              themeProvider.themeMode == ThemeMode.dark ? Icons.wb_sunny : Icons.nightlight_round,
+              themeProvider.themeMode == ThemeMode.dark 
+                  ? Icons.wb_sunny 
+                  : Icons.nightlight_round,
               color: theme.appBarTheme.iconTheme?.color,
             ),
-            onPressed: () {
-              themeProvider.toggleTheme();
-            },
+            onPressed: themeProvider.toggleTheme,
           ),
         ],
       ),
@@ -113,149 +209,72 @@ class _MapaScreenState extends State<MapaScreen> {
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(
-              child: CircularProgressIndicator(
-                color: theme.colorScheme.primary, // Color del indicador de carga
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircularProgressIndicator(
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Cargando mapa turístico...',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onBackground,
+                    ),
+                  ),
+                ],
               ),
             );
           } else if (snapshot.hasError) {
             return Center(
-              child: Text(
-                'Error: ${snapshot.error}',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: theme.colorScheme.error, // Color para mensajes de error
-                ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: theme.colorScheme.error,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'Error al cargar el mapa',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Verifica tu conexión a internet',
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: theme.colorScheme.onBackground.withOpacity(0.7),
+                    ),
+                  ),
+                ],
               ),
             );
           } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
             return Center(
-              child: Text(
-                'No hay puntos turísticos disponibles',
-                style: theme.textTheme.bodyLarge?.copyWith(
-                  color: theme.colorScheme.onBackground, // Color del texto
-                ),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.location_off,
+                    size: 64,
+                    color: theme.colorScheme.onBackground.withOpacity(0.5),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No hay puntos turísticos disponibles',
+                    style: theme.textTheme.bodyLarge?.copyWith(
+                      color: theme.colorScheme.onBackground,
+                    ),
+                  ),
+                ],
               ),
             );
           } else {
-            final puntos = snapshot.data!;
-            print("MapaScreen: Datos cargados - ${puntos.length} puntos turísticos");
-
-            // Mostrar coordenadas de los puntos para debug
-            for (var punto in puntos) {
-              print("Punto: ${punto.nombre} - Lat: ${punto.latitud}, Lng: ${punto.longitud}");
-            }
-
-            // Calculate center position based on all points
-            double sumLat = 0;
-            double sumLng = 0;
-
-            for (var punto in puntos) {
-              sumLat += punto.latitud;
-              sumLng += punto.longitud;
-            }
-
-            final centerLat = sumLat / puntos.length;
-            final centerLng = sumLng / puntos.length;
-            
-            print("MapaScreen: Centro del mapa - Lat: $centerLat, Lng: $centerLng");
-
-            final Set<Marker> markers = {};
-
-            for (var punto in puntos) {
-              markers.add(
-                Marker(
-                  markerId: MarkerId(punto.id.toString()),
-                  position: LatLng(punto.latitud, punto.longitud),
-                  infoWindow: InfoWindow(
-                    title: punto.nombre,
-                    snippet:
-                        punto.descripcion.length > 50
-                            ? '${punto.descripcion.substring(0, 47)}...'
-                            : punto.descripcion,
-                    onTap: () {
-                      Navigator.pushNamed(
-                        context,
-                        '/detalles',
-                        arguments: punto,
-                      );
-                    },
-                  ),
-                ),
-              );
-            }
-            
-            print("MapaScreen: ${markers.length} marcadores creados");
-
-            // Google Maps ofrece una opción para estilos personalizados del mapa.
-            // Para el modo oscuro, puedes cargar un JSON de estilo oscuro.
-            // Esto es más avanzado y requeriría un archivo JSON de estilo de mapa.
-            // Por ahora, el mapa base de Google se adaptará automáticamente a la configuración del sistema
-            // si el dispositivo tiene activado el modo oscuro (en Android 10+).
-            // Si quieres un control más fino, tendrías que usar mapStyle.
-            // Por ejemplo:
-            // String _mapStyle = themeProvider.themeMode == ThemeMode.dark ? darkMapStyleJson : '';
-            // (Donde darkMapStyleJson es el contenido de un JSON de estilo de mapa oscuro)
-
-            // Restaurar el centro dinámico según los datos de la app
-            return Stack(
-              children: [
-                SizedBox(
-                  height: MediaQuery.of(context).size.height,
-                  child: FutureBuilder(
-                    future: Future.delayed(const Duration(milliseconds: 200)), // Delay para evitar freeze
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState != ConnectionState.done) {
-                        return const Center(child: CircularProgressIndicator(strokeWidth: 2));
-                      }
-                      return GoogleMap(
-                        onMapCreated: (GoogleMapController controller) {
-                          print("MapaScreen: Mapa creado exitosamente");
-                        },
-                        initialCameraPosition: CameraPosition(
-                          target: LatLng(centerLat, centerLng),
-                          zoom: 12,
-                        ),
-                        markers: markers,
-                        myLocationEnabled: false,
-                        myLocationButtonEnabled: false,
-                        zoomControlsEnabled: true,
-                        mapToolbarEnabled: true,
-                        liteModeEnabled: true, // Lite mode para mejor rendimiento
-                      );
-                    },
-                  ),
-                ),
-                Positioned(
-                  top: 16,
-                  left: 16,
-                  right: 16,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surface,
-                      borderRadius: BorderRadius.circular(30),
-                      boxShadow: [
-                        BoxShadow(
-                          color: theme.colorScheme.onSurface.withOpacity(0.1),
-                          spreadRadius: 1,
-                          blurRadius: 5,
-                          offset: const Offset(0, 3),
-                        ),
-                      ],
-                    ),
-                    child: TextField(
-                      decoration: InputDecoration(
-                        hintText: 'Buscar en el mapa',
-                        hintStyle: TextStyle(color: theme.colorScheme.onSurface.withOpacity(0.7)),
-                        prefixIcon: Icon(Icons.search, color: theme.colorScheme.onSurfaceVariant),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                      ),
-                      style: TextStyle(color: theme.colorScheme.onSurface),
-                    ),
-                  ),
-                ),
-              ],
-            );
+            // Datos listos, mostrar mapa optimizado
+            return _buildMapView(theme);
           }
         },
       ),
@@ -264,5 +283,118 @@ class _MapaScreenState extends State<MapaScreen> {
         onTabChange: _onTabChange,
       ),
     );
+  }
+
+  Widget _buildMapView(ThemeData theme) {
+    if (_initialCameraPosition == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return Stack(
+      children: [
+        // Mapa optimizado
+        GoogleMap(
+          onMapCreated: _onMapCreated,
+          initialCameraPosition: _initialCameraPosition!,
+          markers: _markers,
+          myLocationEnabled: true,
+          myLocationButtonEnabled: false,
+          zoomControlsEnabled: true,
+          mapToolbarEnabled: false, // Reducir overhead
+          liteModeEnabled: false,
+          compassEnabled: true,
+          trafficEnabled: false, // Desactivar tráfico para mejor rendimiento
+          buildingsEnabled: true,
+          // Configuraciones de rendimiento
+          minMaxZoomPreference: const MinMaxZoomPreference(8.0, 18.0),
+        ),
+        
+        // Barra de búsqueda
+        _buildSearchBar(theme),
+        
+        // Botón de mi ubicación personalizado
+        Positioned(
+          bottom: 100,
+          right: 16,
+          child: FloatingActionButton(
+            mini: true,
+            backgroundColor: theme.colorScheme.surface,
+            foregroundColor: theme.colorScheme.primary,
+            onPressed: _goToMyLocation,
+            child: const Icon(Icons.my_location),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSearchBar(ThemeData theme) {
+    return Positioned(
+      top: 16,
+      left: 16,
+      right: 16,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface,
+          borderRadius: BorderRadius.circular(30),
+          boxShadow: [
+            BoxShadow(
+              color: theme.colorScheme.onSurface.withOpacity(0.1),
+              spreadRadius: 1,
+              blurRadius: 5,
+              offset: const Offset(0, 3),
+            ),
+          ],
+        ),
+        child: TextField(
+          decoration: InputDecoration(
+            hintText: 'Buscar en el mapa',
+            hintStyle: TextStyle(
+              color: theme.colorScheme.onSurface.withOpacity(0.7),
+            ),
+            prefixIcon: Icon(
+              Icons.search,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(vertical: 0),
+          ),
+          style: TextStyle(color: theme.colorScheme.onSurface),
+          onSubmitted: _searchLocation,
+        ),
+      ),
+    );
+  }
+
+  void _searchLocation(String query) {
+    // Implementar búsqueda de ubicaciones
+    final punto = _puntos.where((p) => 
+      p.nombre.toLowerCase().contains(query.toLowerCase()) ||
+      p.descripcion.toLowerCase().contains(query.toLowerCase())
+    ).firstOrNull;
+    
+    if (punto != null && _mapController != null) {
+      _mapController!.animateCamera(
+        CameraUpdate.newLatLngZoom(
+          LatLng(punto.latitud, punto.longitud),
+          15.0,
+        ),
+      );
+    }
+  }
+
+  void _goToMyLocation() async {
+    if (_mapController != null) {
+      // Implementar navegación a ubicación actual
+      // Aquí puedes agregar la lógica para obtener la ubicación actual
+      print("Ir a mi ubicación");
+    }
+  }
+
+  @override
+  void dispose() {
+    _mapController?.dispose();
+    super.dispose();
   }
 }

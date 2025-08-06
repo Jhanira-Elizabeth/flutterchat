@@ -110,39 +110,19 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
 
   String _getImageUrl(dynamic item, int index) {
     String? imageUrl;
-    
-    // Manejar diferentes tipos de items
     if (item is PuntoTuristico) {
       imageUrl = item.imagenUrl;
     } else if (item is LocalTuristico) {
       imageUrl = item.imagenUrl;
     } else if (item is Map<String, dynamic>) {
-      // Si es un map raw, intentar obtener la imagen directamente
       imageUrl = item['imagenUrl'] as String?;
     }
-    
-    // Debug: Imprimir para verificar qué imagen se está obteniendo
-    String itemName = '';
-    if (item is PuntoTuristico) {
-      itemName = item.nombre;
-    } else if (item is LocalTuristico) {
-      itemName = item.nombre;
-    } else if (item is Map<String, dynamic>) {
-      itemName = item['nombre'] as String? ?? 'Sin nombre';
-    }
-    
-    print('Item: $itemName');
-    print('ImageUrl obtenida: $imageUrl');
-    
     // Si no hay imagen específica o es null, usar una imagen por defecto
     if (imageUrl == null || imageUrl.isEmpty || imageUrl == 'null') {
       final imageIndex = index % _defaultImageUrls.length;
       final defaultImage = _defaultImageUrls[imageIndex];
-      print('Usando imagen por defecto: $defaultImage');
       return defaultImage;
     }
-    
-    print('Usando imagen específica: $imageUrl');
     return imageUrl;
   }
 
@@ -197,10 +177,10 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.error_outline,
                     size: 64,
-                    color: Theme.of(context).colorScheme.error,
+                    color: Colors.red,
                   ),
                   const SizedBox(height: 16),
                   Text(
@@ -226,20 +206,20 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(
+                  const Icon(
                     Icons.favorite_border,
                     size: 64,
-                    color: Theme.of(context).colorScheme.outline,
+                    color: Colors.grey,
                   ),
                   const SizedBox(height: 16),
-                  Text(
+                  const Text(
                     'No tienes favoritos aún',
-                    style: Theme.of(context).textTheme.titleLarge,
+                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 8),
-                  Text(
+                  const Text(
                     'Explora lugares y añádelos a tus favoritos',
-                    style: Theme.of(context).textTheme.bodyMedium,
+                    style: TextStyle(fontSize: 16),
                     textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 24),
@@ -266,10 +246,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                 itemBuilder: (context, index) {
                   final favorite = favorites[index];
                   final imageUrl = _getImageUrl(favorite, index);
-                  
                   String nombre;
                   String? descripcion;
-                  
                   if (favorite is PuntoTuristico) {
                     nombre = favorite.nombre;
                     descripcion = favorite.descripcion;
@@ -277,31 +255,32 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                     nombre = favorite.nombre;
                     descripcion = favorite.descripcion;
                   } else if (favorite is Map<String, dynamic>) {
-                    // Manejar maps raw
                     nombre = favorite['nombre'] as String? ?? 'Sin nombre';
                     descripcion = favorite['descripcion'] as String?;
                   } else {
                     nombre = 'Elemento desconocido';
                     descripcion = null;
                   }
-
-                  return CustomCard(
-                    imageUrl: imageUrl,
-                    title: nombre,
-                    subtitle: descripcion != null && descripcion.length > 50
-                        ? '${descripcion.substring(0, 50)}...'
-                        : descripcion,
-                    item: favorite,
-                    onTap: () {
-                      Navigator.pushNamed(
-                        context,
-                        '/detalles',
-                        arguments: {
-                          'item': favorite,
-                          'imageUrl': imageUrl,
-                        },
-                      );
-                    },
+                  return RepaintBoundary(
+                    child: CustomCard(
+                      imageUrl: imageUrl,
+                      title: nombre,
+                      subtitle: descripcion != null && descripcion.length > 50
+                          ? '${descripcion.substring(0, 50)}...'
+                          : descripcion,
+                      item: favorite,
+                      onTap: () {
+                        Navigator.pushNamed(
+                          context,
+                          '/detalles',
+                          arguments: {
+                            'item': favorite,
+                            'imageUrl': imageUrl,
+                          },
+                        );
+                      },
+                      // SUGERENCIA: dentro de CustomCard usa Image.asset con cacheWidth/cacheHeight
+                    ),
                   );
                 },
               ),

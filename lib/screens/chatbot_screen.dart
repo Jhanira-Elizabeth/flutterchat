@@ -1,14 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:tursd/widgets/bottom_navigation_bar_turistico.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:geolocator/geolocator.dart';
-import '../services/cache_service.dart';
 
 class ChatbotScreen extends StatefulWidget {
   const ChatbotScreen({super.key});
@@ -18,424 +13,206 @@ class ChatbotScreen extends StatefulWidget {
 }
 
 class _ChatbotScreenState extends State<ChatbotScreen> {
-  bool _waitingBotReply = false;
+  String? _ultimoLugarSeleccionado;
   final List<_Message> _messages = [];
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  int _currentIndex = 2; // Índice inicial para el chatbot, como estaba
-  String? _currentConversationId;
+  bool _waitingBotReply = false;
+  List<String> _menuOptions = [];
+  List<String> _lastMenuOptions = [];
+  String? _chatId;
 
   @override
   void initState() {
     super.initState();
-    // Oculta las barras de sistema para pantalla completa (gestos para mostrar navegación)
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
-
-    // Iniciar o cargar la última conversación (persistencia mientras la app esté abierta)
-    _initOrLoadLastConversation();
+    _startChat();
   }
 
-  Future<void> _initOrLoadLastConversation() async {
-    final user = FirebaseAuth.instance.currentUser;
-    final uid = user?.uid ?? 'anonimo';
-    final boxName = 'chatbotCache';
-    final cacheKey = 'lastConv_$uid';
-    final cached = await CacheService.getData(boxName, cacheKey);
-    if (cached != null && cached is Map<String, dynamic>) {
-      setState(() {
-        _currentConversationId = cached['convId'] as String?;
-      });
-      await _loadChatHistoryFromCache(cached['messages'] as List?);
+  Future<Map<String, dynamic>> _sendToBot(Map<String, dynamic> body) async {
+    final url = Uri.parse('https://tursd-asistente-menu-ehg2aqcag2djbcgk.canadacentral-01.azurewebsites.net/chat');
+    final response = await http.post(
+      url,
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'chat_id': _chatId ?? 'flutter_frontend',
+        ...body,
+      }),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
     } else {
-      final convRef = FirebaseFirestore.instance
-          .collection('chats')
-          .doc(uid)
-          .collection('conversaciones');
-      final querySnapshot =
-          await convRef.orderBy('timestamp', descending: true).limit(1).get();
-      if (querySnapshot.docs.isEmpty) {
-        // No hay conversaciones previas, crea una nueva
-        await _startNewConversation();
-      } else {
-        final lastConv = querySnapshot.docs.first;
-        setState(() {
-          _currentConversationId = lastConv.id;
-        });
-        await _loadChatHistory(conversationId: _currentConversationId);
-      }
+      return {'response': 'Error del servidor: ${response.statusCode}'};
     }
   }
 
-  Future<void> _loadChatHistoryFromCache(List? cachedMessages) async {
+  Future<void> _startChat() async {
     setState(() {
       _messages.clear();
-      if (cachedMessages == null || cachedMessages.isEmpty) {
-        _messages.add(_Message(
-          text: "Hola viajero! ¿Qué quieres saber hoy?",
-          isUser: false,
-        ));
-      } else {
-        for (var msg in cachedMessages) {
-          _messages.add(_Message(
-            text: msg['text'] ?? '',
-            isUser: msg['isUser'] ?? false,
-          ));
-        }
-      }
-    });
-    _scrollToBottom();
-  }
-
-  Future<void> _startNewConversation() async {
-    // Crea una nueva conversación y actualiza el estado
-    final user = FirebaseAuth.instance.currentUser;
-    final uid = user?.uid ?? 'anonimo';
-    final convRef = FirebaseFirestore.instance
-        .collection('chats')
-        .doc(uid)
-        .collection('conversaciones');
-    final newConv = await convRef.add({
-      'timestamp': FieldValue.serverTimestamp(),
-    });
-    setState(() {
-      _currentConversationId = newConv.id;
-      _messages.clear();
-      _messages.add(_Message(
-        text: "Hola viajero! ¿Qué quieres saber hoy?",
-        isUser: false,
-      ));
-    });
-    _scrollToBottom();
-  }
-
-  Future<void> _loadChatHistory({List<DocumentSnapshot>? docs, String? conversationId}) async {
-    final convId = conversationId ?? _currentConversationId;
-    if (convId == null) return;
-    final user = FirebaseAuth.instance.currentUser;
-    final uid = user?.uid ?? 'anonimo';
-    final msgRef = FirebaseFirestore.instance
-        .collection('chats')
-        .doc(uid)
-        .collection('conversaciones')
-        .doc(convId)
-        .collection('mensajes');
-    final querySnapshot = docs == null ? await msgRef.orderBy('timestamp').get() : null;
-    final messagesDocs = docs ?? querySnapshot!.docs;
-
-    setState(() {
-      _messages.clear();
-      if (messagesDocs.isEmpty) {
-        _messages.add(_Message(
-          text: "Hola viajero! ¿Qué quieres saber hoy?",
-          isUser: false,
-        ));
-      } else {
-        for (var doc in messagesDocs) {
-          final data = doc.data() as Map<String, dynamic>;
-          _messages.add(_Message(
-            text: data['text'] ?? '',
-            isUser: data['isUser'] ?? false,
-          ));
-        }
-      }
-    });
-    // Guardar historial en Hive
-    final boxName = 'chatbotCache';
-    final cacheKey = 'lastConv_$uid';
-    final cacheMessages = _messages.map((m) => {'text': m.text, 'isUser': m.isUser}).toList();
-    await CacheService.saveData(boxName, cacheKey, {
-      'convId': convId,
-      'messages': cacheMessages,
-    });
-    _scrollToBottom();
-  }
-
-  Future<List<List<DocumentSnapshot>>> _getConversationsHistory() async {
-    final user = FirebaseAuth.instance.currentUser;
-    final uid = user?.uid ?? 'anonimo';
-    final convRef = FirebaseFirestore.instance
-        .collection('chats')
-        .doc(uid)
-        .collection('conversaciones');
-    final convSnapshot =
-        await convRef.orderBy('timestamp', descending: true).get();
-    List<List<DocumentSnapshot>> conversations = [];
-    for (var convDoc in convSnapshot.docs) {
-      final msgRef = convDoc.reference.collection('mensajes');
-      final msgSnapshot = await msgRef.orderBy('timestamp').get();
-      conversations.add(msgSnapshot.docs);
-    }
-    return conversations;
-  }
-
-  bool _historyModalOpen = false;
-
-  void _onTabChange(int index) {
-    setState(() {
-      _currentIndex = index;
-      switch (index) {
-        case 0:
-          Navigator.pushReplacementNamed(context, '/home');
-          break;
-        case 1:
-          Navigator.pushReplacementNamed(context, '/mapa');
-          break;
-        case 2:
-          Navigator.pushReplacementNamed(context, '/favoritos');
-          break;
-        case 3:
-          break;
-      }
-    });
-  }
-
-  void _sendMessage(String text) async {
-    if (text.trim().isEmpty || _currentConversationId == null || _waitingBotReply) return;
-    setState(() {
+      _menuOptions.clear();
+      _lastMenuOptions.clear();
       _waitingBotReply = true;
+      _ultimoLugarSeleccionado = null;
     });
+    final response = await _sendToBot({});
+    _handleBotResponse(response);
+  }
 
-    // Obtén el UID del usuario actual
-    final user = FirebaseAuth.instance.currentUser;
-    final uid = user?.uid ?? 'anonimo';
-    final msgRef = FirebaseFirestore.instance
-        .collection('chats')
-        .doc(uid)
-        .collection('conversaciones')
-        .doc(_currentConversationId)
-        .collection('mensajes');
+  void _handleBotResponse(Map<String, dynamic> data) {
+    setState(() {
+      _waitingBotReply = false;
+      
+      // Guardar el lugar seleccionado si viene en la respuesta
+      if (data.containsKey('lugar_seleccionado')) {
+        _ultimoLugarSeleccionado = data['lugar_seleccionado'];
+        print('[DEBUG] Lugar seleccionado guardado: $_ultimoLugarSeleccionado');
+      }
+      
+      // 1. Si hay menú en la respuesta, lo usamos y lo guardamos como último menú
+      if (data.containsKey('menu') && data['menu'] is List) {
+        _menuOptions = List<String>.from(data['menu']);
+        _lastMenuOptions = List<String>.from(data['menu']);
+      } else if (data.containsKey('opciones') && data['opciones'] is List) {
+        _menuOptions = List<String>.from(data['opciones']);
+        _lastMenuOptions = List<String>.from(data['opciones']);
+      } else {
+        // 2. Si no hay menú pero hay uno anterior, lo mostramos
+        _menuOptions = List<String>.from(_lastMenuOptions);
+      }
 
-    // Obtén la ubicación actual
-    double? latitude;
-    double? longitude;
-    try {
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
+      String responseText = (data['response'] ?? '').toString();
+
+      // Si la respuesta es detalles de un lugar, guardar el nombre para la próxima ubicación
+      final detallesLugarReg = RegExp(r'Detalles de ([^:]+):', caseSensitive: false);
+      final matchDetalles = detallesLugarReg.firstMatch(responseText);
+      if (matchDetalles != null) {
+        _ultimoLugarSeleccionado = matchDetalles.group(1)?.trim();
+        print('[DEBUG] Lugar extraído de detalles: $_ultimoLugarSeleccionado');
       }
-      if (permission == LocationPermission.whileInUse ||
-          permission == LocationPermission.always) {
-        Position position = await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.high);
-        latitude = position.latitude;
-        longitude = position.longitude;
+
+      // Si la respuesta está vacía y hay menú, mostrar mensaje de bienvenida
+      if (responseText.trim().isEmpty && _menuOptions.isNotEmpty) {
+        responseText = '¡Hola! ¿En qué puedo ayudarte?';
       }
-    } catch (e) {
-      // Si ocurre un error, no se envía ubicación
-      latitude = null;
-      longitude = null;
+
+      // Manejar respuesta de ubicación
+      if (data.containsKey('ubicacion') && data['ubicacion'] is Map) {
+        final ubicacion = data['ubicacion'];
+        _showLocationMessage(ubicacion);
+      } else {
+        // Mensaje normal
+        print('[CHATBOT] $responseText');
+        _messages.add(_Message(text: responseText, isUser: false));
+      }
+
+      // Si hay lugares, agregarlos como mensajes con enlace a Maps
+      if (data.containsKey('lugares') && data['lugares'] is List) {
+        final lugares = data['lugares'] as List;
+        for (var l in lugares) {
+          String nombreLugar = l is Map && l.containsKey('nombre') ? l['nombre'].toString() : l.toString();
+          String ubicacion = l is Map && l.containsKey('direccion') ? l['direccion'].toString() : '';
+          String mapsQuery;
+          if (ubicacion.trim().isNotEmpty) {
+            mapsQuery = ubicacion;
+          } else {
+            mapsQuery = '$nombreLugar, Santo Domingo de los Tsáchilas, Ecuador';
+          }
+          final query = Uri.encodeComponent(mapsQuery);
+          String mapsUrl = '[Ver en Google Maps](https://www.google.com/maps/search/?api=1&query=$query)';
+          String lugarMsg = '**$nombreLugar**\n$mapsUrl';
+          print('[CHATBOT] $lugarMsg');
+          _messages.add(_Message(text: lugarMsg, isUser: false));
+        }
+      }
+    });
+    _scrollToBottom();
+  }
+
+  void _showLocationMessage(Map<String, dynamic> ubicacion) {
+    final nombre = ubicacion['nombre']?.toString() ?? '';
+    final direccion = ubicacion['direccion']?.toString() ?? '';
+    final latitud = ubicacion['latitud'];
+    final longitud = ubicacion['longitud'];
+
+    String locationText = '';
+    if (nombre.isNotEmpty) {
+      locationText += '**$nombre**\n';
+    }
+    if (direccion.isNotEmpty) {
+      locationText += '$direccion\n';
     }
 
-    // Guarda el mensaje del usuario en Firestore
-    await msgRef.add({
-      'text': text,
-      'isUser': true,
-      'timestamp': FieldValue.serverTimestamp(),
-      'latitude': latitude,
-      'longitude': longitude,
-    });
+    print('[CHATBOT] $locationText');
+    _messages.add(_Message(
+      text: locationText.trim(),
+      isUser: false,
+      ubicacion: ubicacion,
+    ));
+  }
 
+  Future<void> _openGoogleMaps(String direccion) async {
+    // Crear una búsqueda específica y detallada para Santo Domingo de los Tsáchilas
+    String searchQuery;
+    if (direccion.isNotEmpty) {
+      // Si ya incluye información de la ciudad, usar tal como está
+      if (direccion.toLowerCase().contains('santo domingo')) {
+        searchQuery = direccion;
+      } else {
+        // Si no, agregar la información completa de la ciudad
+        searchQuery = '$direccion, Santo Domingo de los Tsáchilas, Ecuador';
+      }
+    } else {
+      searchQuery = 'Santo Domingo de los Tsáchilas, Ecuador';
+    }
+    
+    final query = Uri.encodeComponent(searchQuery);
+    final uri = Uri.parse('https://www.google.com/maps/search/?api=1&query=$query');
+    
+    print('[DEBUG] Abriendo Google Maps con: $searchQuery');
+    
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No se pudo abrir Google Maps')),
+        );
+      }
+    }
+  }
+
+  void _sendUserMessage(String text) async {
+    if (text.trim().isEmpty || _waitingBotReply) return;
     setState(() {
       _messages.add(_Message(text: text, isUser: true));
+      _waitingBotReply = true;
+      _menuOptions.clear();
     });
-
-    _scrollToBottom();
-
-    // Llama al método que genera la respuesta y maneja la estructura
-    String reply = await _getFormattedBotReply(text,
-        latitude: latitude, longitude: longitude);
-
-    // Guarda la respuesta del bot en Firestore
-    await msgRef.add({
-      'text': reply,
-      'isUser': false,
-      'timestamp': FieldValue.serverTimestamp(),
-    });
-
-    setState(() {
-      _messages.add(_Message(text: reply, isUser: false));
-      _waitingBotReply = false;
-    });
-
-    // Guardar historial actualizado en Hive
-    final boxName = 'chatbotCache';
-    final cacheKey = 'lastConv_$uid';
-    final cacheMessages = _messages.map((m) => {'text': m.text, 'isUser': m.isUser}).toList();
-    await CacheService.saveData(boxName, cacheKey, {
-      'convId': _currentConversationId,
-      'messages': cacheMessages,
-    });
-
     _controller.clear();
     _scrollToBottom();
+    
+    Map<String, dynamic> body = {'seleccion': text};
+    
+    // Si el usuario pulsa 'Ver ubicación', enviar también el último lugar seleccionado
+    if (text == 'Ver ubicación' && _ultimoLugarSeleccionado != null) {
+      body['lugar_seleccionado'] = _ultimoLugarSeleccionado;
+      print('[DEBUG] Enviando lugar_seleccionado: $_ultimoLugarSeleccionado');
+    }
+    
+    final response = await _sendToBot(body);
+    _handleBotResponse(response);
   }
 
   void _scrollToBottom() {
     Future.delayed(const Duration(milliseconds: 100), () {
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent + 80,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
-    });
-  }
-
-  // Nuevo método para obtener y formatear la respuesta del bot, ahora acepta ubicación
-  Future<String> _getFormattedBotReply(String userText,
-      {double? latitude, double? longitude}) async {
-    try {
-      print('Current conversation ID: $_currentConversationId');
-      final body = {
-        'chat_id': _currentConversationId ?? 'sin_chat_id',
-        'message': userText,
-        if (latitude != null && longitude != null) ...{
-          'latitude': latitude,
-          'longitude': longitude,
-        },
-      };
-
-      print('Sending body: ${jsonEncode(body)}');
-      final response = await http.post(
-        Uri.parse('https://tursd-chatbot-fqdxgsa4arb8fjf9.brazilsouth-01.azurewebsites.net/chat'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(body),
-      );
-
-      print('Respuesta cruda del chatbot: ${response.body}');
-      print('Content-Type: ${response.headers['content-type']}');
-
-      if (response.statusCode == 200) {
-        try {
-          final decodedData = jsonDecode(response.body);
-          if (decodedData is Map && decodedData.containsKey('response')) {
-            final botResponse = decodedData['response'];
-            if (botResponse is Map && botResponse.containsKey('tipo_respuesta')) {
-              String tipoRespuesta = botResponse['tipo_respuesta'];
-              switch (tipoRespuesta) {
-                case 'hoteles_internet':
-                  List<dynamic> hoteles = botResponse['data'] ?? [];
-                  if (hoteles.isNotEmpty) {
-                    String hotelesStr = hoteles.map((hotel) {
-                      String nombre = hotel['nombre'] ?? 'Hotel Desconocido';
-                      String precio = hotel['precio'] ?? 'Precio no disponible';
-                      String rating = hotel['rating'] ?? 'Sin calificar';
-                      String descripcion = hotel['descripcion'] ?? '';
-                      String fuente = hotel['fuente'] ?? 'Desconocida';
-                      String ubicacion = hotel['direccion'] ?? '';
-                      String mapsQuery;
-                      if (ubicacion.toString().trim().isNotEmpty) {
-                        mapsQuery = ubicacion.toString();
-                      } else {
-                        mapsQuery = '$nombre, Santo Domingo de los Tsáchilas, Ecuador';
-                      }
-                      final query = Uri.encodeComponent(mapsQuery);
-                      String mapsUrl = '[Ver en Google Maps](https://www.google.com/maps/search/?api=1&query=$query)';
-                      return '🏨 **$nombre**\n$mapsUrl\n'
-                          '   💰 $precio\n'
-                          '   ⭐ $rating\n'
-                          '   📍 $descripcion\n'
-                          '   🔗 Fuente: $fuente';
-                    }).join('\n\n');
-                    return '¡Perfecto! Encontré estos hoteles actualizados para ti en Santo Domingo de los Tsáchilas:\n\n$hotelesStr\n\n'
-                        '📋 **Para reservar:**\n'
-                        '• Booking.com - Mejores precios y cancelación gratis\n'
-                        '• Expedia - Paquetes hotel + vuelo\n'
-                        '• Contacto directo con el hotel\n\n'
-                        '🏞️ **También te recomiendo visitar:**\n'
-                        '• Malecón del Río Toachi (zona céntrica)\n'
-                        '• Parque Zaracay (área turística)\n'
-                        '• Comunidades Tsáchilas (turismo cultural)\n\n'
-                        '¿Te gustaría que te cuente sobre algún lugar turístico específico mientras planificas tu estadía? 😊';
-                  } else {
-                    return botResponse['texto'] ?? 'No se encontraron hoteles actualizados en internet.';
-                  }
-                case 'lugar_turistico_bd':
-                  String nombre = botResponse['nombre_lugar'] ?? 'Lugar turístico';
-                  String descripcion = botResponse['descripcion'] ?? '';
-                  List<dynamic> servicios = botResponse['servicios'] ?? [];
-                  List<dynamic> actividades = botResponse['actividades'] ?? [];
-                  String serviciosStr = servicios.isNotEmpty ? servicios.map((s) => '- $s').join('\n') : 'No se especifican servicios.';
-                  String actividadesStr = actividades.isNotEmpty ? actividades.map((a) => '- $a').join('\n') : 'No se especifican actividades.';
-                  String textoOriginal = botResponse['texto_original_bd'] ?? 'No hay información detallada disponible.';
-                  return textoOriginal;
-                case 'servicios_info':
-                  String servicioBuscado = botResponse['servicio_buscado'] ?? 'servicio';
-                  List<dynamic> lugares = botResponse['lugares'] ?? [];
-                  if (lugares.isNotEmpty) {
-                    String lugaresStr = lugares.map((l) {
-                      String nombreLugar = l is Map && l.containsKey('nombre') ? l['nombre'] : l.toString();
-                      String ubicacion = l is Map && l.containsKey('direccion') ? l['direccion'] : '';
-                      String mapsQuery;
-                      if (ubicacion.toString().trim().isNotEmpty) {
-                        mapsQuery = ubicacion.toString();
-                      } else {
-                        mapsQuery = '$nombreLugar, Santo Domingo de los Tsáchilas, Ecuador';
-                      }
-                      final query = Uri.encodeComponent(mapsQuery);
-                      String mapsUrl = '[Ver en Google Maps](https://www.google.com/maps/search/?api=1&query=$query)';
-                      return '🏞️ **$nombreLugar**\n$mapsUrl';
-                    }).join('\n');
-                    return '¡Claro! Encontré lugares con **$servicioBuscado** en Santo Domingo de los Tsáchilas, como:\n\n'
-                        '$lugaresStr\n\n'
-                        '¿Te gustaría saber más sobre alguno de ellos o te ayudo a buscar más opciones?';
-                  } else {
-                    return botResponse['texto'] ?? 'No encontré lugares específicos con $servicioBuscado en mi base de datos local.';
-                  }
-                case 'lugares_multiples':
-                  String terminoRelacionado = botResponse['termino_relacionado'] ?? 'este tipo de lugar';
-                  List<dynamic> lugares = botResponse['lugares'] ?? [];
-                  if (lugares.isNotEmpty) {
-                    String lugaresStr = lugares.map((l) {
-                      String nombreLugar = l is Map && l.containsKey('nombre') ? l['nombre'] : l.toString();
-                      String ubicacion = l is Map && l.containsKey('direccion') ? l['direccion'] : '';
-                      String mapsQuery;
-                      if (ubicacion.toString().trim().isNotEmpty) {
-                        mapsQuery = ubicacion.toString();
-                      } else {
-                        mapsQuery = '$nombreLugar, Santo Domingo de los Tsáchilas, Ecuador';
-                      }
-                      final query = Uri.encodeComponent(mapsQuery);
-                      String mapsUrl = '[Ver en Google Maps](https://www.google.com/maps/search/?api=1&query=$query)';
-                      return '🏞️ **$nombreLugar**\n$mapsUrl';
-                    }).join('\n');
-                    return '¡Excelente! Aquí tienes varios lugares relacionados con **$terminoRelacionado** en Santo Domingo de los Tsáchilas:\n\n'
-                        '$lugaresStr\n\n'
-                        '¿Cuál de ellos te interesa más?';
-                  } else {
-                    return botResponse['texto'] ?? 'No encontré lugares relacionados.';
-                  }
-                case 'info_general_internet':
-                  String texto = botResponse['texto'] ?? 'No se encontró información relevante en internet.';
-                  return '🌐 (Búsqueda en Internet)\n$texto';
-                case 'general':
-                  return botResponse['texto'] ?? 'Lo siento, no tengo una respuesta específica para eso en este momento. Intenta otra pregunta.';
-                case 'error':
-                  return '¡Ups! Ocurrió un error: ${botResponse['texto'] ?? 'Desconocido'}. Por favor, inténtalo de nuevo.';
-                default:
-                  return 'Recibí una respuesta del chatbot que no puedo interpretar correctamente. Contenido: ${jsonEncode(botResponse)}';
-              }
-            }
-          }
-          return decodedData['response'].toString();
-        } catch (e) {
-          // Si no es JSON válido, muestra el texto plano
-          return response.body;
-        }
-      } else {
-        try {
-          final errorData = jsonDecode(response.body);
-          if (errorData is Map && errorData.containsKey('response') && errorData['response'] is Map && errorData['response'].containsKey('texto')) {
-            return 'Error del chatbot (${response.statusCode}): ${errorData['response']['texto']}';
-          }
-          return 'Error del servidor (${response.statusCode}): ${response.body}';
-        } catch (e) {
-          // Si no es JSON válido, muestra el texto plano
-          return response.body;
-        }
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent + 80,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
       }
-    } catch (e) {
-      return 'Ocurrió un error al consultar el chatbot: $e';
-    }
+    });
   }
 
   @override
@@ -444,290 +221,116 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
+          tooltip: 'Volver',
           onPressed: () {
-            Navigator.pushReplacementNamed(context, '/home');
+            Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
           },
         ),
-        title: const Text('ChatBot'),
+        title: const Text('ChatBot Turístico'),
         backgroundColor: const Color(0xFF007BFF),
-        elevation: 0,
-        titleTextStyle: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w600,
-          fontSize: 20,
-        ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh, color: Colors.white),
-            tooltip: 'Limpiar chat',
-            onPressed: () async {
-              await _startNewConversation();
-            },
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 8.0, top: 15.0),
-            child: GestureDetector(
-              onTap: () async {
-                if (_historyModalOpen) return;
-                _historyModalOpen = true;
-                final conversations = await _getConversationsHistory();
-                await showModalBottomSheet(
-                  context: context,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.vertical(top: Radius.circular(20)),
-                  ),
-                  builder: (context) {
-                    // ...existing code...
-                    return Container(
-                      // ...existing code...
-                    );
-                  },
-                );
-                _historyModalOpen = false;
-              },
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Container(
-                    width: 32,
-                    height: 3,
-                    margin: const EdgeInsets.symmetric(vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  Container(
-                    width: 24,
-                    height: 3,
-                    margin: const EdgeInsets.symmetric(vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  Container(
-                    width: 16,
-                    height: 3,
-                    margin: const EdgeInsets.symmetric(vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Reiniciar conversación',
+            onPressed: _waitingBotReply ? null : _startChat,
           ),
         ],
       ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              Color(0xFFE0F7FA),
-              Color.fromARGB(255, 255, 255, 255),
-            ],
-          ),
-        ),
-        child: Column(
-          children: [
-            Expanded(
-              child: ListView.builder(
-                controller: _scrollController,
-                itemCount: _messages.length,
-                itemBuilder: (context, index) {
-                  final msg = _messages[index];
-                  if (msg.isUser) {
-                    // Mensaje del usuario: igual que antes
-                    return Align(
-                      alignment: Alignment.centerRight,
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color.fromARGB(255, 148, 219, 252),
-                          borderRadius: BorderRadius.circular(24),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
-                              blurRadius: 6,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: MarkdownBody(
-                          data: msg.text,
-                          styleSheet: MarkdownStyleSheet(
-                            p: const TextStyle(color: Colors.black87, fontSize: 16),
-                            strong: const TextStyle(color: Colors.black87, fontSize: 16, fontWeight: FontWeight.bold),
-                            h1: const TextStyle(color: Colors.black87, fontSize: 22, fontWeight: FontWeight.bold),
-                            h2: const TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.bold),
-                            listBullet: const TextStyle(color: Colors.black87, fontSize: 16),
-                          ),
-                        ),
-                      ),
-                    );
-                  }
-                  // Mensaje del bot: renderizado especial para botones de mapa por opción
-                  // Dividir el texto en bloques por doble salto de línea
-                  final bloques = msg.text.split(RegExp(r'\n\s*\n'));
-                  List<Widget> bloquesWidgets = [];
-                  for (final bloque in bloques) {
-                    // Buscar nombre del lugar (por ejemplo, **Nombre**)
-                    final nombreMatch = RegExp(r'\*\*(.*?)\*\*').firstMatch(bloque);
-                    String? nombreLugar = nombreMatch != null ? nombreMatch.group(1)?.trim() : null;
-                    // Buscar dirección (línea que contiene 'Dirección:' o 'Ubicación:')
-                    final direccionMatch = RegExp(r'(Dirección|Ubicación):?\s*(.*)', caseSensitive: false).firstMatch(bloque);
-                    String? direccion = direccionMatch != null ? direccionMatch.group(2)?.trim() : null;
-                    // Frases genéricas a evitar
-                    final frasesGenericas = [
-                      'Consulta su página para más detalles sobre la dirección y actividades.',
-                      'Santo Domingo, consulta su página para más detal',
-                      'Consulta su página para más detalles.',
-                      'No disponible',
-                      'Sin dirección',
-                      'No especificada',
-                      '',
-                    ];
-                    // Limpiar dirección de Markdown y espacios
-                    if (direccion != null) {
-                      direccion = direccion.replaceAll(RegExp(r'\*'), '').trim();
-                    }
-                    // Limpiar nombre de Markdown y espacios
-                    if (nombreLugar != null) {
-                      nombreLugar = nombreLugar.replaceAll(RegExp(r'\*'), '').trim();
-                    }
-                    // Determinar mapsQuery
-                    String mapsQuery = '';
-                    if (direccion != null &&
-                        direccion.isNotEmpty &&
-                        !frasesGenericas.any((f) => direccion!.toLowerCase().contains(f.toLowerCase()))) {
-                      mapsQuery = direccion;
-                    } else if (nombreLugar != null && nombreLugar.isNotEmpty) {
-                      mapsQuery = '$nombreLugar, Santo Domingo de los Tsáchilas, Ecuador';
-                    }
-                    // Widget del bloque (Markdown)
-                    bloquesWidgets.add(
-                      MarkdownBody(
-                        data: bloque,
-                        styleSheet: MarkdownStyleSheet(
-                          p: const TextStyle(color: Colors.black87, fontSize: 16),
-                          strong: const TextStyle(color: Colors.black87, fontSize: 16, fontWeight: FontWeight.bold),
-                          h1: const TextStyle(color: Colors.black87, fontSize: 22, fontWeight: FontWeight.bold),
-                          h2: const TextStyle(color: Colors.black87, fontSize: 20, fontWeight: FontWeight.bold),
-                          listBullet: const TextStyle(color: Colors.black87, fontSize: 16),
-                        ),
-                      ),
-                    );
-                    // Si hay query de mapa, poner botón justo después del bloque
-                    if (mapsQuery.isNotEmpty) {
-                      bloquesWidgets.add(
-                        Padding(
-                          padding: const EdgeInsets.only(top: 4.0, bottom: 8.0),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: IconButton(
-                              icon: const Icon(Icons.map, color: Colors.blue),
-                              tooltip: 'Ver en Google Maps',
-                              onPressed: () async {
-                                final url = 'https://www.google.com/maps/search/?api=1&query=${Uri.encodeComponent(mapsQuery)}';
-                                if (await canLaunch(url)) {
-                                  await launch(url);
-                                }
-                              },
-                            ),
-                          ),
-                        ),
-                      );
-                    }
-                  }
+      body: Column(
+        children: [
+          Expanded(
+            child: ListView.builder(
+              controller: _scrollController,
+              itemCount: _messages.length + (_menuOptions.isNotEmpty ? 1 : 0),
+              itemBuilder: (context, index) {
+                // Si es el último elemento y hay opciones de menú, renderiza los botones como mensaje
+                if (_menuOptions.isNotEmpty && index == _messages.length) {
                   return Align(
                     alignment: Alignment.centerLeft,
                     child: Container(
                       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       padding: const EdgeInsets.all(16),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF8F9FA),
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
-                            blurRadius: 6,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
+                        color: Colors.grey[200],
+                        borderRadius: BorderRadius.circular(20),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: bloquesWidgets,
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: _menuOptions.map((option) {
+                          return ElevatedButton(
+                            onPressed: _waitingBotReply ? null : () => _sendUserMessage(option),
+                            child: Text(option),
+                          );
+                        }).toList(),
                       ),
                     ),
                   );
-                },
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 4,
-                    offset: const Offset(0, -2),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      onSubmitted: _sendMessage,
-                      decoration: InputDecoration(
-                        hintText: 'Escribe tu mensaje...',
-                        hintStyle: TextStyle(color: Colors.grey.shade600),
-                        filled: true,
-                        fillColor: const Color(0xFFF8F9FA),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(30),
-                          borderSide: BorderSide.none,
-                        ),
-                        contentPadding:
-                            const EdgeInsets.symmetric(vertical: 14),
-                      ),
-                      style: const TextStyle(color: Colors.black),
+                }
+                
+                // Mensajes normales
+                final msg = _messages[index];
+                return Align(
+                  alignment: msg.isUser ? Alignment.centerRight : Alignment.centerLeft,
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: msg.isUser ? Colors.blue[100] : Colors.grey[200],
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  _waitingBotReply
-                      ? SizedBox(
-                          width: 40,
-                          height: 40,
-                          child: Center(
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2.5,
-                              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF007BFF)),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (msg.text.isNotEmpty)
+                          MarkdownBody(
+                            data: msg.text,
+                            styleSheet: MarkdownStyleSheet(
+                              p: const TextStyle(fontSize: 16),
+                              strong: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                                color: Color(0xFF007BFF),
+                              ),
                             ),
                           ),
-                        )
-                      : IconButton(
-                          icon: const Icon(Icons.send, color: Color(0xFF007BFF)),
-                          onPressed: () => _sendMessage(_controller.text),
-                        ),
-                ],
-              ),
+                        // Si el mensaje tiene ubicación, mostrar botón de Google Maps
+                        if (msg.ubicacion != null) ...[
+                          const SizedBox(height: 8),
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              final ubicacion = msg.ubicacion!;
+                              final nombreLugar = ubicacion['nombre']?.toString() ?? '';
+                              final parroquia = ubicacion.containsKey('parroquia') ? ubicacion['parroquia']?.toString() : null;
+                              
+                              // Crear una búsqueda más específica combinando nombre y parroquia
+                              String searchQuery = nombreLugar;
+                              if (parroquia != null && parroquia.isNotEmpty) {
+                                searchQuery += ', Parroquia $parroquia';
+                              }
+                              searchQuery += ', Santo Domingo de los Tsáchilas, Ecuador';
+                              
+                              _openGoogleMaps(searchQuery);
+                            },
+                            icon: const Icon(Icons.map, color: Colors.white),
+                            label: const Text('Ver en Google Maps', style: TextStyle(color: Colors.white)),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.green,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
-          ],
-        ),
-      ),
-      bottomNavigationBar: BottomNavigationBarTuristico(
-        currentIndex: _currentIndex,
-        onTabChange: _onTabChange,
+          ),
+        ],
       ),
     );
   }
@@ -736,6 +339,11 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
 class _Message {
   final String text;
   final bool isUser;
-
-  _Message({required this.text, required this.isUser});
+  final Map<String, dynamic>? ubicacion;
+  
+  _Message({
+    required this.text, 
+    required this.isUser, 
+    this.ubicacion,
+  });
 }

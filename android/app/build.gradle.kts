@@ -38,7 +38,6 @@ android {
 
     signingConfigs {
         create("release") {
-            // ¡CORRECCIÓN AQUÍ! Eliminados los paréntesis extra al final de la línea
             storeFile = file(keystoreProperties.getProperty("storeFile") ?: throw GradleException("storeFile no encontrado en key.properties"))
             storePassword = keystoreProperties.getProperty("storePassword") ?: throw GradleException("storePassword no encontrado en key.properties")
             keyAlias = keystoreProperties.getProperty("keyAlias") ?: throw GradleException("keyAlias no encontrado en key.properties")
@@ -57,8 +56,9 @@ android {
         applicationId = "com.tesis.tursd1"
         minSdk = 23
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 4
+        versionName = "2.0.1"
+        multiDexEnabled = true
     }
 }
 
@@ -72,4 +72,5 @@ dependencies {
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.android.gms:play-services-auth:21.2.0")
     implementation("com.google.firebase:firebase-firestore")
+    implementation("androidx.multidex:multidex:2.0.1")
 }
