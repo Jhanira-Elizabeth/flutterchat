@@ -6,6 +6,8 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 class ChatbotScreen extends StatefulWidget {
   const ChatbotScreen({super.key});
@@ -14,7 +16,23 @@ class ChatbotScreen extends StatefulWidget {
   State<ChatbotScreen> createState() => _ChatbotScreenState();
 }
 
+
+
 class _ChatbotScreenState extends State<ChatbotScreen> {
+  // Utilidad para comparar acciones ignorando tildes y espacios invisibles
+  bool _accionEsAgendar(String texto) {
+    String normalizado = texto
+        .toLowerCase()
+        .replaceAll(RegExp(r'[áàäâã]'), 'a')
+        .replaceAll(RegExp(r'[éèëê]'), 'e')
+        .replaceAll(RegExp(r'[íìïî]'), 'i')
+        .replaceAll(RegExp(r'[óòöôõ]'), 'o')
+        .replaceAll(RegExp(r'[úùüû]'), 'u')
+        .replaceAll(RegExp(r'[^a-z0-9 ]'), '') // quita caracteres raros
+        .replaceAll(RegExp(r'\s+'), ' ') // espacios múltiples a uno solo
+        .trim();
+    return normalizado == 'agendar visita';
+  }
   // Extrae los días permitidos del último mensaje del bot
   List<String> _extractDiasPermitidos() {
     // Busca en el último mensaje del bot los días de la semana
@@ -46,7 +64,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   String? _horaSalida;
   Position? _ubicacionActual;
   bool _visitaAgendada = false;
-  bool _procesoAgendamiento = false;
+  bool _procesoAgendamiento = false; // (Se usa en el flujo de agendamiento)
   String? _inputMode; // 'text', 'menu', etc.
   final List<_Message> _messages = [];
   final TextEditingController _controller = TextEditingController();
@@ -58,13 +76,35 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   List<String> _menuOptions = [];
   List<String> _lastMenuOptions = [];
   String? _chatId;
+  String? _googleAccessToken; // Guardar el accessToken de Google
 
   @override
   void initState() {
     super.initState();
     SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     _obtenerUbicacionActual();
+    _obtenerGoogleAccessToken();
     _startChat();
+  }
+
+  // Obtiene el accessToken de Google si el usuario está logueado
+  Future<void> _obtenerGoogleAccessToken() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        // Usar AuthService para obtener el accessToken
+        final googleSignIn = GoogleSignIn();
+        final googleUser = await googleSignIn.signInSilently();
+        if (googleUser != null) {
+          final googleAuth = await googleUser.authentication;
+          setState(() {
+            _googleAccessToken = googleAuth.accessToken;
+          });
+        }
+      }
+    } catch (e) {
+      print('[ERROR] No se pudo obtener el accessToken de Google: $e');
+    }
   }
 
   // Obtener ubicación actual del usuario
@@ -108,7 +148,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   //Sistema de envío de mensajes al bot
   //Acceso a la API del bot
   Future<Map<String, dynamic>> _sendToBot(Map<String, dynamic> body) async {
-    final url = Uri.parse('http://192.168.1.7:8000/chat');
+    final url = Uri.parse('http://10.41.1.241:8000/chat');
     
     // Agregar ubicación actual si está disponible
     if (_ubicacionActual != null) {
@@ -132,7 +172,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
             headers: {'Content-Type': 'application/json'},
             body: jsonEncode(requestPayload),
           )
-          .timeout(const Duration(seconds: 30));
+          .timeout(const Duration(seconds: 300));
       
       print('[API][RECV] <= status: ${response.statusCode} body: ${response.body}');
       
@@ -175,8 +215,8 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       // Nuevo: manejar input_mode y proceso_agendamiento
       _inputMode = data['input_mode']?.toString();
       _procesoAgendamiento = data['proceso_agendamiento'] == true;
-      _esperandoFecha = data['esperando_fecha'] == true;
-      _esperandoHora = data['esperando_hora'] == true;
+      _esperandoFecha = data['esperando_fecha'] == true || data['proceso_agendamiento'] == 'esperando_fecha' || data['input_mode'] == 'date';
+      _esperandoHora = data['esperando_hora'] == true || data['proceso_agendamiento'] == 'esperando_hora' || data['input_mode'] == 'time';
       _visitaAgendada = data['visita_agendada'] == true;
 
       // Guardar información del agendamiento
@@ -381,6 +421,28 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     if (seleccionMapped.toLowerCase() == 'sí, agendar visita' || seleccionMapped.toLowerCase() == 'si, agendar visita') {
       seleccionMapped = 'Agendar visita';
     }
+    // Si el usuario pulsa "Sí, generar ruta" o "Si, generar ruta", enviar el nombre del último lugar seleccionado y accion
+    bool esGenerarRuta = seleccionMapped.toLowerCase() == 'sí, generar ruta' || seleccionMapped.toLowerCase() == 'si, generar ruta';
+    Map<String, dynamic> body;
+    if (esGenerarRuta && _ultimoLugarSeleccionado != null) {
+      body = {
+        'seleccion': _ultimoLugarSeleccionado,
+        'accion': 'generar_ruta',
+      };
+    } else {
+      body = {'seleccion': seleccionMapped};
+    }
+
+    // Si el usuario está agendando una visita, incluir el accessToken de Google
+    if (_accionEsAgendar(seleccionMapped) && _googleAccessToken != null) {
+      body['google_access_token'] = _googleAccessToken;
+      print('[DEBUG] Incluyendo google_access_token en el request');
+    }
+
+    // Si estamos esperando la hora, guardar la hora ingresada
+    if (_esperandoHora || _inputMode == 'time') {
+      _horaSalida = text.trim();
+    }
 
     print('[USER][SEND] $text');
     setState(() {
@@ -394,34 +456,32 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     _controller.clear();
     _scrollToBottom();
 
-    // Preparar el cuerpo de la petición
-    Map<String, dynamic> body = {'seleccion': seleccionMapped};
+    // ...el resto del código sigue igual...
 
-    // Nuevo: enviar input_mode si está presente
+    // CORREGIDO: enviar input_mode si está presente
     if (_inputMode != null) {
       body['input_mode'] = _inputMode;
     }
 
-    // Nuevo: enviar proceso_agendamiento si está activo
-    if (_procesoAgendamiento) {
-      body['proceso_agendamiento'] = true;
+    // SIEMPRE enviar proceso_agendamiento con el valor correcto en cada paso
+    if (_esperandoHora || _inputMode == 'time') {
+      body['proceso_agendamiento'] = "esperando_hora";
+      if (_horaSalida != null) {
+        body['hora_salida'] = _horaSalida;
+      }
+    } else if (_esperandoFecha || _inputMode == 'date') {
+      body['proceso_agendamiento'] = "esperando_fecha";
     }
-
-    // Agregar contexto de agendamiento si estamos en proceso
-    if (_esperandoFecha) {
-      body['esperando_fecha'] = true;
-      if (_ultimoLugarSeleccionado != null) {
-        body['lugar_seleccionado'] = _ultimoLugarSeleccionado;
-      }
+    // SIEMPRE reenviar fecha_visita y hora_salida si están disponibles
+    if (_fechaViaje != null) {
+      body['fecha_visita'] = _fechaViaje;
     }
-    if (_esperandoHora) {
-      body['esperando_hora'] = true;
-      if (_ultimoLugarSeleccionado != null) {
-        body['lugar_seleccionado'] = _ultimoLugarSeleccionado;
-      }
-      if (_fechaViaje != null) {
-        body['fecha_viaje'] = _fechaViaje;
-      }
+    if (_horaSalida != null) {
+      body['hora_salida'] = _horaSalida;
+    }
+    // Siempre enviar lugar_seleccionado si está disponible (para no perder contexto en el backend)
+    if (_ultimoLugarSeleccionado != null) {
+      body['lugar_seleccionado'] = _ultimoLugarSeleccionado;
     }
 
     // Si el usuario pulsa una acción que requiere contexto de lugar, enviar también el último lugar seleccionado
@@ -447,6 +507,11 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
 
     final response = await _sendToBot(body);
     _handleBotResponse(response);
+
+    // Si el usuario acaba de agendar, refrescar el accessToken por si expira
+    if (_accionEsAgendar(seleccionMapped)) {
+      await _obtenerGoogleAccessToken();
+    }
   }
 
   void _scrollToBottom() {
@@ -496,12 +561,15 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
             children: [
               Icon(Icons.calendar_today, color: Colors.orange.shade700, size: 22),
               const SizedBox(width: 8),
-              Text(
-                'Fecha de visita a $_ultimoLugarSeleccionado',
-                style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.orange.shade700,
-                  fontSize: 16,
+              Flexible(
+                child: Text(
+                  'Fecha de visita a $_ultimoLugarSeleccionado',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange.shade700,
+                    fontSize: 16,
+                  ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
             ],
@@ -548,7 +616,9 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                           );
                           if (picked != null) {
                             final formatted = _formatDateDDMMYYYY(picked);
-                            _controller.text = formatted;
+                            setState(() {
+                              _controller.text = formatted;
+                            });
                           }
                         },
                   child: AbsorbPointer(
@@ -575,23 +645,33 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
-              FloatingActionButton(
-                mini: true,
-                onPressed: _waitingBotReply || _controller.text.isEmpty
-                    ? null
-                    : () => _sendUserMessage(_controller.text),
-                backgroundColor: Colors.orange,
-                child: _waitingBotReply
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.send, color: Colors.white),
+              const SizedBox(width: 8),
+              SizedBox(
+                height: 40,
+                width: 40,
+                child: IconButton(
+                  icon: _waitingBotReply
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.orange,
+                          ),
+                        )
+                      : const Icon(Icons.send, color: Colors.white),
+                  onPressed: _waitingBotReply || _controller.text.isEmpty
+                      ? null
+                      : () => _sendUserMessage(_controller.text),
+                  style: ButtonStyle(
+                    backgroundColor: MaterialStateProperty.all<Color>(Colors.orange),
+                    shape: MaterialStateProperty.all<OutlinedBorder>(
+                      RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
@@ -656,23 +736,51 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                   ),
                   keyboardType: TextInputType.datetime,
                   enabled: !_waitingBotReply,
+                  onChanged: (_) {
+                    setState(() {}); // Para actualizar el estado del botón
+                  },
+                  onSubmitted: _waitingBotReply ? null : (value) {
+                    if (value.trim().isNotEmpty) {
+                      _sendUserMessage(value.trim());
+                      setState(() {
+                        _controller.clear();
+                      });
+                    }
+                  },
                 ),
               ),
               const SizedBox(width: 12),
-              FloatingActionButton(
-                mini: true,
-                onPressed: _waitingBotReply ? null : () => _sendUserMessage(_controller.text),
-                backgroundColor: Colors.blue,
-                child: _waitingBotReply
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.send, color: Colors.white),
+              SizedBox(
+                height: 40,
+                child: ElevatedButton.icon(
+                  icon: _waitingBotReply
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.send, color: Colors.white),
+                  label: const SizedBox.shrink(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    padding: const EdgeInsets.all(0),
+                    minimumSize: const Size(40, 40),
+                  ),
+                  onPressed: _waitingBotReply || _controller.text.isEmpty
+                      ? null
+                      : () {
+                          _sendUserMessage(_controller.text.trim());
+                          setState(() {
+                            _controller.clear();
+                          });
+                        },
+                ),
               ),
             ],
           ),
@@ -711,20 +819,32 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
             ),
           ),
           const SizedBox(width: 12),
-          FloatingActionButton(
-            mini: true,
-            onPressed: _waitingBotReply ? null : () => _sendUserMessage(_controller.text),
-            backgroundColor: const Color(0xFF007BFF),
-            child: _waitingBotReply
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.send, color: Colors.white),
+          SizedBox(
+            height: 40,
+            child: ElevatedButton.icon(
+              icon: _waitingBotReply
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.send, color: Colors.white),
+              label: const SizedBox.shrink(),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF007BFF),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                padding: const EdgeInsets.all(0),
+                minimumSize: const Size(40, 40),
+              ),
+              onPressed: _waitingBotReply || _controller.text.isEmpty
+                  ? null
+                  : () => _sendUserMessage(_controller.text),
+            ),
           ),
         ],
       ),
@@ -853,11 +973,9 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                         spacing: 8,
                         runSpacing: 8,
                         children: _menuOptions.map((option) {
-                          // Dar colores especiales a ciertos botones
                           Color buttonColor = const Color(0xFF007BFF);
                           Color textColor = Colors.white;
                           IconData? icon;
-                          
                           if (option.contains("Agendar") || option.contains("agendar")) {
                             buttonColor = Colors.orange;
                             icon = Icons.event_note;
@@ -883,13 +1001,14 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                             buttonColor = Colors.grey.shade600;
                             icon = Icons.home;
                           }
-                          
                           return ElevatedButton.icon(
                             onPressed: _waitingBotReply ? null : () => _sendUserMessage(option),
                             icon: icon != null ? Icon(icon, size: 18) : const SizedBox.shrink(),
                             label: Text(
                               option,
                               style: const TextStyle(fontSize: 13),
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 2,
                             ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: buttonColor,
