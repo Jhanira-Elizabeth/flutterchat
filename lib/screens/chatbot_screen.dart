@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
@@ -19,6 +20,20 @@ class ChatbotScreen extends StatefulWidget {
 
 
 class _ChatbotScreenState extends State<ChatbotScreen> {
+  // Convierte URLs en texto plano a formato markdown [url](url)
+  String _convertirUrlsAMarkdown(String text) {
+    final urlPattern = RegExp(r'(https?:\/\/[^\s]+)');
+    return text.replaceAllMapped(urlPattern, (match) {
+      final url = match.group(0);
+      return url != null ? '[${url}](${url})' : '';
+    });
+  }
+  // Detecta si el texto contiene markdown básico o enlaces
+  bool _esMarkdown(String text) {
+    // Detecta enlaces o markdown básico (enlaces, negritas, listas)
+    final markdownPattern = RegExp(r'(\[.*?\]\(.*?\))|\*\*|\* |^- |\n- |\n\d+\. ');
+    return markdownPattern.hasMatch(text);
+  }
   // Utilidad para comparar acciones ignorando tildes y espacios invisibles
   bool _accionEsAgendar(String texto) {
     String normalizado = texto
@@ -32,6 +47,12 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
         .replaceAll(RegExp(r'\s+'), ' ') // espacios múltiples a uno solo
         .trim();
     return normalizado == 'agendar visita';
+  }
+  
+    // Normaliza todos los espacios (incluyendo no separables) a espacio simple y trim
+  String _normalizarEspacios(String? texto) {
+    if (texto == null) return '';
+    return texto.replaceAll(RegExp(r'\s+'), ' ').replaceAll(String.fromCharCode(160), ' ').trim();
   }
   // Extrae los días permitidos del último mensaje del bot
   List<String> _extractDiasPermitidos() {
@@ -221,10 +242,14 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
 
       // Guardar información del agendamiento
       if (data.containsKey('lugar_seleccionado')) {
-        _ultimoLugarSeleccionado = data['lugar_seleccionado'];
+        _ultimoLugarSeleccionado = _normalizarEspacios(data['lugar_seleccionado']);
         print('[DEBUG] Lugar seleccionado guardado: $_ultimoLugarSeleccionado');
       }
-      if (data.containsKey('fecha_viaje')) {
+      // Aceptar tanto 'fecha_viaje' como 'fecha_visita' para mantener la fecha correctamente
+      if (data.containsKey('fecha_visita') && data['fecha_visita'] != null) {
+        _fechaViaje = data['fecha_visita'];
+        print('[DEBUG] Fecha de visita guardada: $_fechaViaje');
+      } else if (data.containsKey('fecha_viaje') && data['fecha_viaje'] != null) {
         _fechaViaje = data['fecha_viaje'];
         print('[DEBUG] Fecha de viaje guardada: $_fechaViaje');
       }
@@ -255,7 +280,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       final detallesLugarReg = RegExp(r'Detalles de ([^:]+):', caseSensitive: false);
       final matchDetalles = detallesLugarReg.firstMatch(responseText);
       if (matchDetalles != null) {
-        _ultimoLugarSeleccionado = matchDetalles.group(1)?.trim();
+        _ultimoLugarSeleccionado = _normalizarEspacios(matchDetalles.group(1));
         print('[DEBUG] Lugar extraído de detalles: $_ultimoLugarSeleccionado');
       }
 
@@ -271,7 +296,8 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       } else if (responseText.isNotEmpty) {
         // Mensaje normal
         print('[CHATBOT] $responseText');
-        _messages.add(_Message(text: responseText, isUser: false));
+        final textoConLinks = _convertirUrlsAMarkdown(responseText);
+        _messages.add(_Message(text: textoConLinks, isUser: false));
       }
 
       // Si hay lugares, agregarlos como mensajes con enlace a Maps
@@ -433,8 +459,8 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       body = {'seleccion': seleccionMapped};
     }
 
-    // Si el usuario está agendando una visita, incluir el accessToken de Google
-    if (_accionEsAgendar(seleccionMapped) && _googleAccessToken != null) {
+    // Si el usuario está agendando una visita o estamos en el flujo de agendamiento, incluir el accessToken de Google si está disponible
+    if ((_accionEsAgendar(seleccionMapped) || _procesoAgendamiento || _esperandoHora || _inputMode == 'time') && _googleAccessToken != null) {
       body['google_access_token'] = _googleAccessToken;
       print('[DEBUG] Incluyendo google_access_token en el request');
     }
@@ -473,15 +499,15 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       body['proceso_agendamiento'] = "esperando_fecha";
     }
     // SIEMPRE reenviar fecha_visita y hora_salida si están disponibles
-    if (_fechaViaje != null) {
+    if (_fechaViaje != null && _fechaViaje!.isNotEmpty) {
       body['fecha_visita'] = _fechaViaje;
     }
-    if (_horaSalida != null) {
+    if (_horaSalida != null && _horaSalida!.isNotEmpty) {
       body['hora_salida'] = _horaSalida;
     }
     // Siempre enviar lugar_seleccionado si está disponible (para no perder contexto en el backend)
     if (_ultimoLugarSeleccionado != null) {
-      body['lugar_seleccionado'] = _ultimoLugarSeleccionado;
+      body['lugar_seleccionado'] = _normalizarEspacios(_ultimoLugarSeleccionado);
     }
 
     // Si el usuario pulsa una acción que requiere contexto de lugar, enviar también el último lugar seleccionado
@@ -495,8 +521,8 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       'Ver servicios',
     ];
     if (accionesLugar.any((accion) => text.trim().toLowerCase() == accion.toLowerCase()) && _ultimoLugarSeleccionado != null) {
-      body['lugar_seleccionado'] = _ultimoLugarSeleccionado;
-      print('[DEBUG] Enviando lugar_seleccionado: $_ultimoLugarSeleccionado');
+      body['lugar_seleccionado'] = _normalizarEspacios(_ultimoLugarSeleccionado);
+      print('[DEBUG] Enviando lugar_seleccionado: ${_normalizarEspacios(_ultimoLugarSeleccionado)}');
     }
 
     // Enviar ubicación actual si está disponible
@@ -1054,24 +1080,41 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (msg.text.isNotEmpty)
-                          MarkdownBody(
-                            data: msg.text,
-                            styleSheet: MarkdownStyleSheet(
-                              p: TextStyle(
-                                fontSize: 16,
-                                color: msg.isUser ? Colors.white : Colors.black87,
-                              ),
-                              strong: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 18,
-                                color: msg.isUser ? Colors.white : const Color(0xFF007BFF),
-                              ),
-                              a: TextStyle(
-                                color: msg.isUser ? Colors.white : const Color(0xFF007BFF),
-                                decoration: TextDecoration.underline,
-                              ),
-                            ),
-                          ),
+                          (_esMarkdown(msg.text)
+                              ? MarkdownBody(
+                                  data: msg.text,
+                                  styleSheet: MarkdownStyleSheet(
+                                    p: TextStyle(
+                                      fontSize: 16,
+                                      color: msg.isUser ? Colors.white : Colors.black87,
+                                    ),
+                                    strong: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 18,
+                                      color: msg.isUser ? Colors.white : const Color(0xFF007BFF),
+                                    ),
+                                    a: TextStyle(
+                                      color: msg.isUser ? Colors.white : const Color(0xFF007BFF),
+                                      decoration: TextDecoration.underline,
+                                    ),
+                                  ),
+                                  onTapLink: (text, href, title) async {
+                                    if (href != null) {
+                                      final uri = Uri.parse(href);
+                                      if (await canLaunchUrl(uri)) {
+                                        await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                      }
+                                    }
+                                  },
+                                )
+                              : SelectableText(
+                                  msg.text,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    color: msg.isUser ? Colors.white : Colors.black87,
+                                  ),
+                                )),
+// ...existing code...
                         // Si el mensaje tiene ubicación, mostrar botón de Google Maps
                         if (msg.ubicacion != null) ...[
                           const SizedBox(height: 12),
