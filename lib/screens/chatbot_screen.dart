@@ -1,12 +1,10 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import 'package:flutter_markdown/flutter_markdown.dart';
+import 'package:flutter/gestures.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:permission_handler/permission_handler.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
@@ -17,23 +15,7 @@ class ChatbotScreen extends StatefulWidget {
   State<ChatbotScreen> createState() => _ChatbotScreenState();
 }
 
-
-
 class _ChatbotScreenState extends State<ChatbotScreen> {
-  // Convierte URLs en texto plano a formato markdown [url](url)
-  String _convertirUrlsAMarkdown(String text) {
-    final urlPattern = RegExp(r'(https?:\/\/[^\s]+)');
-    return text.replaceAllMapped(urlPattern, (match) {
-      final url = match.group(0);
-      return url != null ? '[${url}](${url})' : '';
-    });
-  }
-  // Detecta si el texto contiene markdown básico o enlaces
-  bool _esMarkdown(String text) {
-    // Detecta enlaces o markdown básico (enlaces, negritas, listas)
-    final markdownPattern = RegExp(r'(\[.*?\]\(.*?\))|\*\*|\* |^- |\n- |\n\d+\. ');
-    return markdownPattern.hasMatch(text);
-  }
   // Utilidad para comparar acciones ignorando tildes y espacios invisibles
   bool _accionEsAgendar(String texto) {
     String normalizado = texto
@@ -49,11 +31,12 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     return normalizado == 'agendar visita';
   }
   
-    // Normaliza todos los espacios (incluyendo no separables) a espacio simple y trim
+  // Normaliza todos los espacios (incluyendo no separables) a espacio simple y trim
   String _normalizarEspacios(String? texto) {
     if (texto == null) return '';
     return texto.replaceAll(RegExp(r'\s+'), ' ').replaceAll(String.fromCharCode(160), ' ').trim();
   }
+
   // Extrae los días permitidos del último mensaje del bot
   List<String> _extractDiasPermitidos() {
     // Busca en el último mensaje del bot los días de la semana
@@ -80,6 +63,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     final y = date.year.toString();
     return '$d/$m/$y';
   }
+
   String? _ultimoLugarSeleccionado;
   String? _fechaViaje;
   String? _horaSalida;
@@ -169,7 +153,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   //Sistema de envío de mensajes al bot
   //Acceso a la API del bot
   Future<Map<String, dynamic>> _sendToBot(Map<String, dynamic> body) async {
-    final url = Uri.parse('http://10.41.1.241:8000/chat');
+    final url = Uri.parse('http://192.168.1.7:8000/chat');
     
     // Agregar ubicación actual si está disponible
     if (_ubicacionActual != null) {
@@ -296,8 +280,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       } else if (responseText.isNotEmpty) {
         // Mensaje normal
         print('[CHATBOT] $responseText');
-        final textoConLinks = _convertirUrlsAMarkdown(responseText);
-        _messages.add(_Message(text: textoConLinks, isUser: false));
+        _messages.add(_Message(text: responseText, isUser: false));
       }
 
       // Si hay lugares, agregarlos como mensajes con enlace a Maps
@@ -449,6 +432,13 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     }
     // Si el usuario pulsa "Sí, generar ruta" o "Si, generar ruta", enviar el nombre del último lugar seleccionado y accion
     bool esGenerarRuta = seleccionMapped.toLowerCase() == 'sí, generar ruta' || seleccionMapped.toLowerCase() == 'si, generar ruta';
+
+    // Si el usuario pulsa "No, gracias" en el contexto de agendamiento/ruta, reiniciar el chat/menu
+    if (seleccionMapped.toLowerCase() == 'no, gracias') {
+      await _startChat();
+      return;
+    }
+
     Map<String, dynamic> body;
     if (esGenerarRuta && _ultimoLugarSeleccionado != null) {
       body = {
@@ -481,8 +471,6 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
     });
     _controller.clear();
     _scrollToBottom();
-
-    // ...el resto del código sigue igual...
 
     // CORREGIDO: enviar input_mode si está presente
     if (_inputMode != null) {
@@ -690,8 +678,8 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                       ? null
                       : () => _sendUserMessage(_controller.text),
                   style: ButtonStyle(
-                    backgroundColor: MaterialStateProperty.all<Color>(Colors.orange),
-                    shape: MaterialStateProperty.all<OutlinedBorder>(
+                    backgroundColor: WidgetStateProperty.all<Color>(Colors.orange),
+                    shape: WidgetStateProperty.all<OutlinedBorder>(
                       RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(20),
                       ),
@@ -705,7 +693,6 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       ),
     );
   }
-
 
   Widget _buildTimeInputField() {
     return Container(
@@ -919,8 +906,8 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       ),
       body: Column(
         children: [
-          // Mostrar información de agendamiento activo si existe
-          if (_ultimoLugarSeleccionado != null && (_fechaViaje != null || _horaSalida != null))
+          // Mostrar información de agendamiento activo solo si el proceso está en curso y no se ha agendado aún
+          if (_procesoAgendamiento == true && !_visitaAgendada && _ultimoLugarSeleccionado != null && (_fechaViaje != null || _horaSalida != null))
             Container(
               width: double.infinity,
               padding: const EdgeInsets.all(16),
@@ -1051,9 +1038,58 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                     ),
                   );
                 }
-                
+
                 // Mensajes normales
                 final msg = _messages[index];
+
+                // Detectar si el mensaje contiene un enlace de Google Calendar especial
+                if (msg.text.contains('[Abrir Google Calendar]')) {
+                  final urlReg = RegExp(r'\[Abrir Google Calendar\]\((.*?)\)');
+                  final match = urlReg.firstMatch(msg.text);
+                  final url = match != null ? match.group(1) : null;
+                  if (url != null) {
+                    return Align(
+                      alignment: msg.isUser ? Alignment.centerRight : Alignment.centerLeft,
+                      child: Container(
+                        margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                        padding: const EdgeInsets.all(16),
+                        constraints: BoxConstraints(
+                          maxWidth: MediaQuery.of(context).size.width * 0.8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: msg.isUser 
+                              ? const Color(0xFF007BFF) 
+                              : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              blurRadius: 3,
+                              offset: const Offset(0, 1),
+                            ),
+                          ],
+                        ),
+                        child: ElevatedButton.icon(
+                          onPressed: () async {
+                            final uri = Uri.parse(url);
+                            if (await canLaunchUrl(uri)) {
+                              await launchUrl(uri, mode: LaunchMode.externalApplication);
+                            }
+                          },
+                          icon: const Icon(Icons.event, color: Colors.white),
+                          label: const Text('Abrir Google Calendar', style: TextStyle(color: Colors.white)),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            elevation: 2,
+                          ),
+                        ),
+                      ),
+                    );
+                  }
+                }
+
                 return Align(
                   alignment: msg.isUser ? Alignment.centerRight : Alignment.centerLeft,
                   child: Container(
@@ -1069,7 +1105,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                       borderRadius: BorderRadius.circular(20),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
+                          color: Colors.black.withValues(alpha: 0.1),
                           blurRadius: 3,
                           offset: const Offset(0, 1),
                         ),
@@ -1080,41 +1116,25 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         if (msg.text.isNotEmpty)
-                          (_esMarkdown(msg.text)
-                              ? MarkdownBody(
-                                  data: msg.text,
-                                  styleSheet: MarkdownStyleSheet(
-                                    p: TextStyle(
-                                      fontSize: 16,
-                                      color: msg.isUser ? Colors.white : Colors.black87,
-                                    ),
-                                    strong: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 18,
-                                      color: msg.isUser ? Colors.white : const Color(0xFF007BFF),
-                                    ),
-                                    a: TextStyle(
-                                      color: msg.isUser ? Colors.white : const Color(0xFF007BFF),
-                                      decoration: TextDecoration.underline,
-                                    ),
-                                  ),
-                                  onTapLink: (text, href, title) async {
-                                    if (href != null) {
-                                      final uri = Uri.parse(href);
-                                      if (await canLaunchUrl(uri)) {
-                                        await launchUrl(uri, mode: LaunchMode.externalApplication);
-                                      }
-                                    }
-                                  },
-                                )
-                              : SelectableText(
-                                  msg.text,
-                                  style: TextStyle(
-                                    fontSize: 16,
-                                    color: msg.isUser ? Colors.white : Colors.black87,
-                                  ),
-                                )),
-// ...existing code...
+                          SelectableText.rich(
+                            _parseMarkdown(
+                              msg.text,
+                              style: TextStyle(
+                                fontSize: 16,
+                                color: msg.isUser ? Colors.white : Colors.black87,
+                              ),
+                              linkStyle: TextStyle(
+                                color: msg.isUser ? Colors.white : const Color(0xFF007BFF),
+                                decoration: TextDecoration.underline,
+                              ),
+                              boldStyle: TextStyle(
+                                fontWeight: FontWeight.bold,
+                                fontSize: 18,
+                                color: msg.isUser ? Colors.white : const Color(0xFF007BFF),
+                              ),
+                            ),
+                            textAlign: TextAlign.left,
+                          ),
                         // Si el mensaje tiene ubicación, mostrar botón de Google Maps
                         if (msg.ubicacion != null) ...[
                           const SizedBox(height: 12),
@@ -1165,12 +1185,69 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
           ? FloatingActionButton(
               onPressed: _obtenerUbicacionActual,
               backgroundColor: Colors.orange,
-              child: const Icon(Icons.my_location, color: Colors.white),
               tooltip: 'Obtener mi ubicación',
+              child: const Icon(Icons.my_location, color: Colors.white),
             )
           : null,
     );
   }
+}
+
+// Simple Markdown parser for bold, links, and normal text
+TextSpan _parseMarkdown(
+  String text, {
+  TextStyle? style,
+  TextStyle? linkStyle,
+  TextStyle? boldStyle,
+}) {
+  final List<InlineSpan> children = [];
+  final RegExp exp = RegExp(
+    r'(\*\*([^\*]+)\*\*|\[([^\]]+)\]\(([^\)]+)\))',
+    multiLine: true,
+  );
+  int currentIndex = 0;
+
+  Iterable<RegExpMatch> matches = exp.allMatches(text);
+  for (final match in matches) {
+    if (match.start > currentIndex) {
+      children.add(TextSpan(
+        text: text.substring(currentIndex, match.start),
+        style: style,
+      ));
+    }
+    if (match.group(2) != null) {
+      // Bold
+      children.add(TextSpan(
+        text: match.group(2),
+        style: boldStyle ?? style?.copyWith(fontWeight: FontWeight.bold),
+      ));
+    } else if (match.group(3) != null && match.group(4) != null) {
+      // Link
+      final String linkText = match.group(3)!;
+      final String url = match.group(4)!;
+      children.add(
+        TextSpan(
+          text: linkText,
+          style: linkStyle ?? style?.copyWith(color: Colors.blue, decoration: TextDecoration.underline),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () async {
+              final uri = Uri.parse(url);
+              if (await canLaunchUrl(uri)) {
+                await launchUrl(uri, mode: LaunchMode.externalApplication);
+              }
+            },
+        ),
+      );
+    }
+    currentIndex = match.end;
+  }
+  if (currentIndex < text.length) {
+    children.add(TextSpan(
+      text: text.substring(currentIndex),
+      style: style,
+    ));
+  }
+  return TextSpan(children: children, style: style);
 }
 
 class _Message {

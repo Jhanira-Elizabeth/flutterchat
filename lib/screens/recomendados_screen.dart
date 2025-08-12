@@ -102,7 +102,9 @@ class _RecomendadosScreenState extends State<RecomendadosScreen> {
     final theme = Theme.of(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
 
-    final recomendados = ModalRoute.of(context)!.settings.arguments as List<dynamic>;
+    // Asegura que recomendados nunca sea null ni cause error de cast
+    final args = ModalRoute.of(context)!.settings.arguments;
+    final List<dynamic> recomendados = (args is List<dynamic>) ? args : <dynamic>[];
     print('Recomendados recibidos: ${recomendados.length}');
 
     // Guardar recomendados en caché al construir la pantalla
@@ -170,6 +172,7 @@ class _RecomendadosScreenState extends State<RecomendadosScreen> {
                       '/detalles',
                       arguments: {
                         'item': item,
+                        'imageUrl': _getImageUrl(item),
                       },
                     );
                   },

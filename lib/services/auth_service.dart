@@ -5,7 +5,12 @@ import 'package:logger/logger.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final GoogleSignIn _googleSignIn = GoogleSignIn();
+  final GoogleSignIn _googleSignIn = GoogleSignIn(
+  scopes: [
+    'email',
+    'https://www.googleapis.com/auth/calendar.events', // <-- ¡Este es el importante!
+  ],
+);
   final Logger _logger = Logger();
   final FirebaseFirestore _firestore = FirebaseFirestore.instance; // Añadido
 

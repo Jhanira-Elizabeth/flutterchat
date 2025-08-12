@@ -360,12 +360,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     'Recomendados',
                     textoBoton: 'Ver todos',
                     cantidad: 5,
-                    onPressed: () {
-                      _recomendadosFuture = _cargarRecomendados();
+                    onPressed: () async {
+                      // Espera a que se carguen los recomendados antes de navegar
+                      final recomendados = await _recomendadosFuture;
                       Navigator.pushNamed(
                         context,
                         '/recomendados',
-                        arguments: null,
+                        arguments: recomendados,
                       );
                     },
                   ),
