@@ -546,7 +546,7 @@ class SearchResultsList extends StatelessWidget {
                 ),
               ),
             );
-          } else {
+          } else if (resultadosBusqueda.isNotEmpty && index - 2 >= 0 && index - 2 < resultadosBusqueda.length) {
             final item = resultadosBusqueda[index - 2];
             return Padding(
               padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8.0),
@@ -601,6 +601,8 @@ class SearchResultsList extends StatelessWidget {
                 ),
               ),
             );
+          } else {
+            return const SizedBox.shrink();
           }
         },
         childCount: resultadosBusqueda.isEmpty ? 2 : resultadosBusqueda.length + 2,
