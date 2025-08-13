@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../models/visita.dart';
 import '../services/visita_service.dart';
 import '../widgets/custom_card.dart';
+import '../widgets/bottom_navigation_bar_turistico.dart';
 
 class VisitadosScreen extends StatefulWidget {
   const VisitadosScreen({Key? key}) : super(key: key);
@@ -13,6 +14,28 @@ class VisitadosScreen extends StatefulWidget {
 
 class _VisitadosScreenState extends State<VisitadosScreen> {
   late Future<List<Visita>> _visitasFuture;
+  int _currentIndex = 0;
+
+  void _onTabChange(int index) {
+    if (_currentIndex == index) return;
+    setState(() {
+      _currentIndex = index;
+      switch (index) {
+        case 0:
+          Navigator.pushReplacementNamed(context, '/home');
+          break;
+        case 1:
+          Navigator.pushReplacementNamed(context, '/mapa');
+          break;
+        case 2:
+          Navigator.pushReplacementNamed(context, '/favoritos');
+          break;
+        case 3:
+          Navigator.pushReplacementNamed(context, '/chatbot');
+          break;
+      }
+    });
+  }
 
   @override
   void initState() {
@@ -72,6 +95,10 @@ class _VisitadosScreenState extends State<VisitadosScreen> {
             },
           );
         },
+      ),
+      bottomNavigationBar: BottomNavigationBarTuristico(
+        currentIndex: _currentIndex,
+        onTabChange: _onTabChange,
       ),
     );
   }
