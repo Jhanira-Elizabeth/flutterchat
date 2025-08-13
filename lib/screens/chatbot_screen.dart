@@ -155,7 +155,7 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
   //Sistema de envío de mensajes al bot
   //Acceso a la API del bot
   Future<Map<String, dynamic>> _sendToBot(Map<String, dynamic> body) async {
-    final url = Uri.parse('http://192.168.1.7:8000/chat');
+    final url = Uri.parse('http://10.41.2.219:8000/chat');
     
     // Agregar ubicación actual si está disponible
     if (_ubicacionActual != null) {
