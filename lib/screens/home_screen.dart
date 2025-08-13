@@ -9,6 +9,7 @@ import '../services/auth_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:core';
 import '../../services/cache_service.dart';
+import '../services/visita_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -18,6 +19,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  late Future<bool> _tieneVisitasPasadas;
   static const List<String> _imagenesPrecarga = [
     'assets/images/congoma1.jpg',
     'assets/images/Tapir5.jpg',
@@ -95,6 +97,15 @@ class _HomeScreenState extends State<HomeScreen> {
       _recomendadosEnMemoria = list;
       return list;
     });
+
+    final user = FirebaseAuth.instance.currentUser;
+    _tieneVisitasPasadas = _checkVisitasPasadas(user?.uid);
+  }
+
+  Future<bool> _checkVisitasPasadas(String? userId) async {
+  if (userId == null) return false;
+  final visitas = await VisitaService().obtenerVisitasPasadas(userId);
+  return visitas.isNotEmpty;
   }
 
   @override
@@ -361,7 +372,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     textoBoton: 'Ver todos',
                     cantidad: 5,
                     onPressed: () async {
-                      // Espera a que se carguen los recomendados antes de navegar
                       final recomendados = await _recomendadosFuture;
                       Navigator.pushNamed(
                         context,
@@ -409,6 +419,41 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: const EdgeInsets.only(left: 16, right: 16),
                   child: CategoriasSection(categorias: _HomeScreenState.categorias),
                 ),
+              ),
+              // Sección de lugares visitados debajo de categorías
+              FutureBuilder<bool>(
+                future: _tieneVisitasPasadas,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const SliverToBoxAdapter(child: SizedBox.shrink());
+                  }
+                  final tieneVisitas = snapshot.hasData && snapshot.data!;
+                  return SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.only(left: 16, right: 16, top: 8),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildSectionHeader(
+                            'Lugares visitados',
+                            textoBoton: 'Ver todos',
+                            onPressed: () {
+                              Navigator.pushNamed(context, '/visitados');
+                            },
+                          ),
+                          if (!tieneVisitas)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 8.0, left: 8.0),
+                              child: Text(
+                                'No has visitado ningún lugar aún.',
+                                style: TextStyle(color: Colors.grey),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
               ),
             ],
           ],

@@ -7,6 +7,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import '../models/visita.dart';
+import '../services/visita_service.dart';
 
 class ChatbotScreen extends StatefulWidget {
   const ChatbotScreen({super.key});
@@ -222,7 +224,54 @@ class _ChatbotScreenState extends State<ChatbotScreen> {
       _procesoAgendamiento = data['proceso_agendamiento'] == true;
       _esperandoFecha = data['esperando_fecha'] == true || data['proceso_agendamiento'] == 'esperando_fecha' || data['input_mode'] == 'date';
       _esperandoHora = data['esperando_hora'] == true || data['proceso_agendamiento'] == 'esperando_hora' || data['input_mode'] == 'time';
+      final visitaAgendadaAntes = _visitaAgendada;
       _visitaAgendada = data['visita_agendada'] == true;
+
+      // Guardar visita en Firebase solo si acaba de agendarse
+      if (!visitaAgendadaAntes && _visitaAgendada && _ultimoLugarSeleccionado != null && _fechaViaje != null) {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          // Intentar extraer más datos del lugar si están disponibles
+          String nombreLugar = _ultimoLugarSeleccionado ?? '';
+          String tipoLugar = '';
+          String? imagenUrl;
+          String lugarId = '';
+          if (data.containsKey('lugar_id')) {
+            lugarId = data['lugar_id'].toString();
+          }
+          if (data.containsKey('tipo_lugar')) {
+            tipoLugar = data['tipo_lugar'].toString();
+          }
+          if (data.containsKey('imagen_url')) {
+            imagenUrl = data['imagen_url'].toString();
+          }
+          // Si no hay id, usar nombre como id fallback
+          if (lugarId.isEmpty) lugarId = nombreLugar;
+          // Parsear fecha
+          DateTime fechaVisita;
+          try {
+            // Soporta formatos 'dd/MM/yyyy' o 'yyyy-MM-dd'
+            if (_fechaViaje!.contains('/')) {
+              final partes = _fechaViaje!.split('/');
+              fechaVisita = DateTime(int.parse(partes[2]), int.parse(partes[1]), int.parse(partes[0]));
+            } else {
+              fechaVisita = DateTime.parse(_fechaViaje!);
+            }
+          } catch (_) {
+            fechaVisita = DateTime.now();
+          }
+          final visita = Visita(
+            id: '', // Firestore lo asigna
+            userId: user.uid,
+            lugarId: lugarId,
+            nombreLugar: nombreLugar,
+            tipoLugar: tipoLugar,
+            imagenUrl: imagenUrl,
+            fechaVisita: fechaVisita,
+          );
+          VisitaService().guardarVisita(visita);
+        }
+      }
 
       // Guardar información del agendamiento
       if (data.containsKey('lugar_seleccionado')) {
